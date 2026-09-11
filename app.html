@@ -86,6 +86,7 @@ h3.sec .dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(#6
 .card h4{font-size:15px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px;color:var(--text)}
 .table-wrap{padding:0 26px 10px;overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:640px}
+.ocard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px 13px;margin:10px 12px;box-shadow:var(--shadow)}
 .tbl-nowrap td{white-space:nowrap}
 .tbl-nowrap thead th:first-child,.tbl-nowrap tbody td:first-child{width:34px}
 .tbl-nowrap td .cellsub{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
@@ -197,6 +198,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-11c</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -3128,6 +3130,35 @@ function renderOrderTbl(){
   if(a!=="all")rows=rows.filter(o=>o.accountId===a);
   if(q)rows=rows.filter(o=>[o.buyer,o.contact,o.note,orderName(o)].join(" ").toLowerCase().includes(q));
   if(!rows.length){el.innerHTML=`<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">🧾</div><p>没有匹配的订单</p></div></div>`;return;}
+  if(window.innerWidth<760){
+    el.innerHTML=rows.map(function(o){
+      var fees=orderFees(o),net=orderNet(o),profit=net-orderCost(o),rf=o.refund;
+      var h='<div class="ocard">';
+      h+='<div style="display:flex;align-items:center;gap:8px">';
+      h+='<input type="checkbox" '+(selOrders.has(o.id)?'checked':'')+' onchange="toggleSel(\''+o.id+'\',this.checked)">';
+      h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+esc(orderName(o))+'</div>';
+      h+='<div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+esc(o.date)+' · '+esc((pmeta(o.platformId)||{}).name||"")+' · '+esc(aname(o.accountId))+'</div></div>';
+      h+='<select class="status-sel" onchange="quickStatus(\''+o.id+'\',this.value)">'+["待发货","已发货","已完成","已退款","已退货","已换货"].map(function(s){return '<option '+(o.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select>';
+      h+='</div>';
+      h+='<div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:9px;font-size:12.5px">';
+      h+='<span>'+yuan(o.price)+' × '+o.qty+'</span>';
+      h+='<span>实付 <b style="color:var(--green)">'+yuan(orderPaid(o))+'</b></span>';
+      h+='<span>费用 <b style="color:var(--amber)">'+yuan(fees)+'</b></span>';
+      h+='<span>净收入 '+yuan(net)+'</span>';
+      h+='<span>利润 <b style="color:'+(profit>=0?'var(--green)':'var(--red)')+'">'+yuan(profit)+'</b></span>';
+      if(rf&&+rf.amount>0) h+='<span>退款 <b style="color:var(--red)">−'+yuan(rf.amount)+'</b></span>';
+      h+='</div>';
+      h+='<div style="font-size:12px;color:var(--muted);margin-top:7px">买家：'+esc(o.buyer||"—")+(o.contact?('　'+esc(o.contact)):'')+'</div>';
+      if(o.note) h+='<div style="font-size:11.5px;color:var(--muted);margin-top:3px">备注：'+esc(o.note)+'</div>';
+      h+='<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">';
+      h+='<button class="btn btn-ghost btn-sm" onclick="printOrder(\''+o.id+'\')">🖨️ 打印</button>';
+      h+='<button class="btn btn-ghost btn-sm" onclick="openOrderForm(\''+o.id+'\')">✏️ 编辑</button>';
+      h+='<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delOrder(\''+o.id+'\')">🗑️ 删除</button>';
+      h+='</div></div>';
+      return h;
+    }).join("");
+    return;
+  }
   el.innerHTML=`<div class="table-wrap"><table class="tbl-nowrap">
     <thead><tr><th style="width:30px"><input type="checkbox" name="selall" onchange="selAll(this.checked)"></th><th>销售日期</th><th>平台</th><th>账号</th><th>商品</th><th>单价×数量</th><th>实付(含运)</th><th>订单费用</th><th>净收入</th><th>预估利润</th><th>退款</th><th>买家 / 联系方式</th><th>买家备注</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>${rows.map(o=>{const fees=orderFees(o),net=orderNet(o),profit=net-orderCost(o),rf=o.refund;return `<tr>
