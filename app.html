@@ -4109,7 +4109,8 @@ function renderNav(){
   nav.querySelectorAll("a").forEach(a=>a.addEventListener("click",()=>{curView=a.dataset.view;render();}));
   const chip=document.getElementById("userChip");if(chip)chip.innerHTML="👤 "+currentUserName();
 }
-function render(){
+function normStocks(){try{(DB.products||[]).forEach(function(p){if(p&&p.variants&&p.variants.length){var s=0;p.variants.forEach(function(v){s+=(+v.stock||0)});if(s>0)p.stock=s;}});}catch(e){}}
+function render(){normStocks();
   const allowed=navForRole().map(v=>v[0]);
   if(!allowed.includes(curView))curView="dash";
   const v={dash:vDash,inventory:vInventory,orders:vOrders,recon:vRecon,expense:vExpense,platform:vPlatform,rates:vRates,profit:vProfit,purchase:vPurchase,credit:vCredit,customers:vCustomers,security:vSecurity}[curView]();
@@ -4153,7 +4154,7 @@ async function syncFromServer(){
 
 /* ================= AUTH & PERMISSIONS ================= */
 const ROLE_ADMIN=["boss","finance","super"];
-const ROLE_NAME={boss:"老板",finance:"财务",super:"主管",sales:"销售"};
+const ROLE_NAME={boss:"老板",finance:"财务",super:"主管",ssup:"销售主管",sales:"销售"};
 const LSTYLE="width:100%;padding:12px 14px;border-radius:12px;border:1px solid #d8dee9;background:#ffffff;color:#0f172a;font-size:15px;outline:none;text-align:center;margin-top:8px;box-shadow:0 1px 2px rgba(15,23,42,.04);";
 let CUR=null;
 function hashPass(pw,salt){let h=2166136261;const s=(salt||"honghu")+pw;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(16);}
@@ -4166,6 +4167,7 @@ const NAV_ALL=[["dash","📊","经营总览"],["inventory","📦","库存管理"
 const NAV_SALES=["dash","orders","recon","expense","credit"];
 function navForRole(){
   if(isAdmin())return NAV_ALL;
+  if(CUR&&CUR.role==="ssup")return NAV_ALL;
   const hasWx=DB.accounts.some(a=>(CUR&&(CUR.accountIds||[]).includes(a.id)&&a.platformId==="wechat"));
   const sales=["dash","inventory","orders","recon","expense","platform","customers"];
   if(hasWx)sales.push("credit");
@@ -4260,7 +4262,7 @@ function vSecurity(){
   return html;
 }
 function openUserForm(id){
-  const roles=[["boss","老板"],["finance","财务"],["super","主管"],["sales","销售"]];
+  const roles=[["boss","老板"],["finance","财务"],["super","主管"],["ssup","销售主管"],["sales","销售"]];
   const roleOpts=r=>roles.map(x=>`<option value="${x[0]}" ${r===x[0]?"selected":""}>${x[1]}</option>`).join("");
   const accChecks=sel=>{if(!DB.accounts.length)return `<div style="font-size:12px;color:var(--muted)">暂无平台账号，请先到「平台与账号」添加账号。</div>`;return DB.accounts.filter(a=>canSee(a.id)).map(a=>`<label style="font-size:12.5px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:9px;padding:7px 10px;display:flex;align-items:center;gap:6px"><input type="checkbox" value="${a.id}" ${sel.includes(a.id)?"checked":""}> ${esc(a.name)}</label>`).join("");}
   const idv=id?DB.users.find(x=>x.id===id):{role:"sales",accountIds:[]};
@@ -4268,11 +4270,11 @@ function openUserForm(id){
       <div class="field"><label class="req">用户名</label><input id="u_name" value="${id?esc(idv.username):""}" placeholder="如：小王"></div>
       <div class="field"><label>${id?"重置密码（留空不改）":"密码（至少4位）"}</label><input id="u_pw" type="password" placeholder="${id?'若修改请填写':'至少 4 位'}"></div>
       <div class="field"><label class="req">角色</label><select id="u_role" onchange="roleAccToggle()">${roleOpts(idv.role)}</select></div>
-      <div class="field" id="u_acc"><label>她/他管理的账号（销售专用）</label><div style="display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto">${accChecks(idv.accountIds||[])}</div></div>
+      <div class="field" id="u_acc"><label>她/他管理的账号（销售 / 销售主管专用）</label><div style="display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto">${accChecks(idv.accountIds||[])}</div></div>
       </div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveUser('${id||""}')">保存</button></div>`);
   roleAccToggle();
 }
-function roleAccToggle(){const r=$("#u_role").value;const box=$("#u_acc");if(box)box.style.display=r==="sales"?"":"none";}
+function roleAccToggle(){const r=$("#u_role").value;const box=$("#u_acc");if(box)box.style.display=(r==="sales"||r==="ssup")?"":"none";}
 function saveUser(id){
   const name=$("#u_name").value.trim();if(!name){toast("请填写用户名","err");return;}
   const role=$("#u_role").value;
