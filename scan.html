@@ -1,0 +1,368 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="utf-8">
+<!-- This site is hosted on Netlify. Anyone can build and deploy a site
+     like this one for free: https://netlify.new/?utm_campaign=ai-legible&utm_source=comment&utm_medium=referral&utm_id=c928589b-5bb0-41c6-af68-52821868299d
+     Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
+<meta name="hosting-provider" content="Netlify">
+<meta name="netlify-deploy" content="https://netlify.new/?utm_campaign=ai-legible&amp;utm_source=meta&amp;utm_medium=referral&amp;utm_id=c928589b-5bb0-41c6-af68-52821868299d">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest-scan.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>鸿鹄对账 · 扫码入库</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#0f172a;color:#e8eef7;padding:12px 12px 74px}
+  h1{font-size:18px;margin:2px 0 10px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .card{background:#16223a;border:1px solid #24365a;border-radius:16px;padding:14px;margin-bottom:12px}
+  label{display:block;font-size:12.5px;color:#9fb3d1;margin:9px 0 4px}
+  input,select{width:100%;padding:12px;border-radius:11px;border:1px solid #2c3f66;background:#0e1930;color:#fff;font-size:16px;outline:none}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  .btn{display:block;width:100%;padding:14px;border:0;border-radius:12px;font-size:16px;font-weight:700;color:#fff;margin-top:12px}
+  .btn.primary{background:linear-gradient(135deg,#10b981,#059669)}
+  .btn.blue{background:linear-gradient(135deg,#0ea5e9,#2563eb)}
+  .btn:disabled{opacity:.5}
+  .wrapcam{position:relative;border-radius:12px;overflow:hidden;background:#000;min-height:240px;display:flex;align-items:center;justify-content:center}
+  #cam{width:100%;height:auto;max-height:56vh;object-fit:contain;background:#000;display:none}
+  .ph{color:#6d84a8;font-size:13px;text-align:center;padding:30px;line-height:1.7}
+  .scanline{position:absolute;left:8%;right:8%;height:2px;background:#22d3ee;box-shadow:0 0 12px #22d3ee;top:20%;animation:sc 2s linear infinite}
+  @keyframes sc{0%{top:15%}50%{top:82%}100%{top:15%}}
+  .tag{display:inline-block;background:#22314f;color:#9fd0ff;font-size:11.5px;padding:3px 9px;border-radius:20px}
+  .hint{font-size:12px;color:#7f95b8;line-height:1.8;margin-top:6px}
+  .toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#0b1426;border:1px solid #2c3f66;color:#fff;padding:11px 16px;border-radius:12px;font-size:13.5px;opacity:0;transition:.3s;max-width:92%;text-align:center;z-index:9}
+  .toast.show{opacity:1}
+  .ok{color:#34d399}.err{color:#f87171}
+  .sec{font-size:12px;color:#7f95b8;margin:14px 0 2px;border-top:1px solid #24365a;padding-top:10px;display:flex;justify-content:space-between;align-items:center}
+  .sw{display:flex;align-items:center;gap:8px;font-size:13px;color:#cfe0f7}
+  .sw input{width:auto}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#0b1426;border-top:1px solid #24365a;display:flex;justify-content:center;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
+  .bar a{flex:1;max-width:200px;text-align:center;text-decoration:none;color:#cfe0f7;font-size:12.5px;padding:9px 0;border-radius:10px;background:#16223a}
+  .log{font-size:12px;color:#7f95b8;margin-top:8px;max-height:78px;overflow:auto;line-height:1.7}
+#reader video{width:100%!important;height:100%!important;object-fit:cover}
+#reader canvas.drawingBuffer{display:none}
+</style></head>
+<body>
+  <h1>📷 扫码入库 <span id="netTag" class="tag"></span> <span id="syncTick" class="tag" style="background:#182738;color:#9fb3d1"></span></h1>
+
+  <div class="card">
+    <div id="reader" style="width:100%;height:220px;border-radius:12px;overflow:hidden;background:#000;position:relative"></div>
+    <div class="ph" id="camPh" style="font-size:12px;color:#6d84a8;text-align:center;padding:8px">点下方「开启摄像头」扫描条码</div>
+    <button class="btn blue" id="camBtn" onclick="toggleCam()">🎥 开启摄像头</button>
+    <input type="file" id="photoInp" accept="image/*" capture="environment" style="display:none" onchange="decodePhoto(this)">
+    <button class="btn" style="background:#0ea5e9;color:#fff" onclick="document.getElementById('photoInp').click()">📸 拍照识别（一定能用，推荐）</button>
+    <div class="sec"><span>操作类型</span><span><label class="sw"><input type="radio" name="smode" value="in" checked onchange="setMode()"> 入库</label>　<label class="sw"><input type="radio" name="smode" value="out" onchange="setMode()"> 出库</label></span></div>
+
+    <div class="hint" id="statusLine"></div>
+    <div id="diagLine" class="hint" style="text-align:center"></div>
+    <div id="scanInfo" class="hint" style="text-align:center"></div>
+    <div class="log" id="logBox"></div>
+  </div>
+
+  <div class="card">
+    <div class="ico" style="text-align:center;font-size:30px">🏷️</div>
+    <div id="foundHint" class="hint" style="text-align:center"></div>
+    <label>条形码</label>
+    <input id="f_bc" placeholder="扫码 或 手动输入条形码" onchange="lookup()">
+    <label>商品名称（自动带出，可修改）</label>
+    <input id="f_name" placeholder="自动获取或手动填写">
+    <label>品牌（下拉选 或 手动输入；新品牌自动创建）</label>
+    <div style="display:flex;gap:8px">
+      <select id="f_brandSel" onchange="pickSel('brand')" style="flex:0 0 46%"><option value="">选择已有…</option></select>
+      <input id="f_brand" placeholder="或手动输入品牌" style="flex:1">
+    </div>
+    <div id="unitPickWrap" style="display:none"><label>入库单位（整箱/拆零）</label><select id="f_unitPick" onchange="onUnitPick()"></select><div id="qtyHint" class="hint"></div></div>
+    <div id="attachWrap" style="display:none"><label>或：归入已有商品作为规格（同款白光/黄光）</label><select id="f_attach"></select><input id="f_varName" placeholder="规格名（如 白光 / 黄光）" style="margin-top:8px"></div>
+    <label>类目（下拉选 或 手动输入）</label>
+    <div style="display:flex;gap:8px">
+      <select id="f_catSel" onchange="pickSel('cat')" style="flex:0 0 46%"><option value="">选择已有…</option></select>
+      <input id="f_cat" placeholder="或手动输入类目" style="flex:1">
+    </div>
+    <div class="row">
+      <div><label>数量</label><input id="f_qty" type="number" value="1" min="1" inputmode="numeric" oninput="if(typeof onUnitPick==='function')onUnitPick()"></div>
+      <div><label>单位</label><input id="f_unit" value="个"></div>
+    </div>
+    <div class="row">
+      <div><label>成本价(可选)</label><input id="f_cost" type="number" step="0.01" inputmode="decimal"></div>
+      <div><label>售价(可选)</label><input id="f_price" type="number" step="0.01" inputmode="decimal"></div>
+    </div>
+    <button class="btn primary" id="subBtn" onclick="submitScan()">✅ 入库（同步到库存）</button>
+    <div class="hint">手动/蓝牙扫码枪：在"条形码"框输入后回车即可（会自动带出商品信息）。</div>
+  </div>
+
+  <div class="bar"><a href="index.html">🏠 首页</a><a href="app.html">📱 打开软件</a></div>
+  <div class="toast" id="toast"></div>
+
+
+<script src="quagga2.min.js"></script>
+<script src="zxing.min.js"></script>
+<script>
+const API = location.origin;
+const CLOUD_URL='https://jzclolmbxdtmfrylrifr.supabase.co';
+const CLOUD_KEY='sb_publishable_DlerdBhrH7ulJPcW2Zj6Rg_QmsH15o2';
+const CLOUD_TABLE='app_data';
+let DBcache=null, stream=null, detector=null, scanTimer=null, running=false, online=false;
+let continuous=false, lastCode="", lastTime=0;
+
+function toast(m){const t=document.getElementById("toast");t.innerHTML=m;t.classList.add("show");clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove("show"),2600);}
+function logLine(m){const b=document.getElementById("logBox");const d=document.createElement("div");d.innerHTML=m;b.insertBefore(d,b.firstChild);if(b.childNodes.length>20)b.removeChild(b.lastChild);}
+function setTag(){const t=document.getElementById("netTag");t.textContent=online?"已连本机":"云端直连";t.style.background=online?"#1b3a2a":"#3a2f1b";t.style.color=online?"#86efac":"#fcd34d";}
+function syncTick(t){const el=document.getElementById("syncTick");if(el)el.textContent=(t||"已同步")+" "+new Date().toTimeString().slice(0,8);}
+
+async function cloudGet(){try{const r=await fetch(CLOUD_URL+'/rest/v1/'+CLOUD_TABLE+'?select=data&id=eq.main',{headers:{apikey:CLOUD_KEY,Authorization:'***'+CLOUD_KEY}});const rows=await r.json();return (rows&&rows[0]&&rows[0].data)||null;}catch(e){return null;}}
+async function cloudPut(db){const h={apikey:CLOUD_KEY,Authorization:'***'+CLOUD_KEY,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'};const r=await fetch(CLOUD_URL+'/rest/v1/'+CLOUD_TABLE,{method:'POST',headers:h,body:JSON.stringify({id:'main',data:db,updated_at:new Date().toISOString()})});return r.ok;}
+function mergeInto(db,j){
+  var _sign=(String(j.mode||"in")==="out")?-1:1;
+  db.products=db.products||[];db.brands=db.brands||[];db.cats=db.cats||[];
+  const bc=(j.barcode||"").trim(),nm=(j.name||"").trim(),br=(j.brand||"").trim(),ca=(j.category||"").trim();
+  let qty=(+j.qty||0)*_sign;if(qty===0)qty=_sign;
+  let prod=null;
+  if(bc){prod=db.products.find(p=>(p.barcode||"")===bc);}
+  if(!prod&&nm){prod=db.products.find(p=>(p.name||"")===nm);}
+  let resultName,resultStock;
+  if(prod){prod.stock=(+prod.stock||0)+qty;if(nm)prod.name=nm;if(br)prod.brand=br;if(ca)prod.category=ca;if(bc)prod.barcode=bc;if(+j.cost>0)prod.cost=+j.cost;if(+j.price>0)prod.price=+j.price;resultName=prod.name;resultStock=prod.stock;}
+  else{const name=nm||(bc?('未命名('+bc+')'):'扫码商品');prod={id:('s'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)),sku:bc,barcode:bc,name:name,brand:br,category:ca,cost:+j.cost||0,price:+j.price||0,stock:qty,minStock:0,location:'',unit:j.unit||'个'};db.products.push(prod);resultName=name;resultStock=qty;}
+  if(br&&db.brands.indexOf(br)<0)db.brands.push(br);
+  if(ca&&db.cats.indexOf(ca)<0)db.cats.push(ca);
+  db.savedAt=Date.now();
+  return {name:resultName,stock:resultStock};
+}
+
+function fillLists(d){
+  var cats=(d&&d.cats&&d.cats.length)?d.cats:["外观件","灯光","性能","内饰","排气","轮毂","悬挂","电子","其他"];
+  var brands=d?[...new Set([...(d.brands||[]),...(d.products||[]).map(function(p){return p.brand;}).filter(Boolean)])]:[];
+  var cs=document.getElementById("f_catSel");
+  if(cs){var cv=cs.value;cs.innerHTML='<option value="">选择已有类目…</option>'+cats.map(function(x){return '<option value="'+x+'">'+x+'</option>';}).join("");cs.value=cv;}
+  var bs=document.getElementById("f_brandSel");
+  if(bs){var bv=bs.value;bs.innerHTML='<option value="">选择已有品牌…</option>'+brands.map(function(x){return '<option value="'+x+'">'+x+'</option>';}).join("");bs.value=bv;}
+}
+async function loadData(){
+  let d=null;
+  try{const r=await fetch(API+"/load",{cache:"no-store"});if(r.ok){d=await r.json();online=!!(d&&d.products);}}catch(e){}
+  if(!online){d=await cloudGet();}
+  DBcache=d&&d.products?d:null;setTag();fillLists(DBcache);
+}
+async function refreshData(){
+  let d=null;
+  try{const r=await fetch(API+"/load",{cache:"no-store"});if(r.ok){d=await r.json();online=!!(d&&d.products);}}catch(e){}
+  if(!online){d=await cloudGet();}
+  if(!d||!d.products){syncTick("离线");return;}
+  DBcache=d;setTag();fillLists(d);lookup();syncTick();
+}
+
+function setupUnitPick(p){
+  var sel=document.getElementById("f_unitPick"),wrap=document.getElementById("unitPickWrap");
+  if(!sel||!wrap)return;
+  if(p&&p.units&&p.units.length){
+    var base=(p.unit||"个");
+    sel.innerHTML='<option value="1">'+base+'（基础单位）</option>'+p.units.map(function(u){return '<option value="'+u.factor+'">'+u.name+'（1'+u.name+'='+u.factor+base+'）</option>';}).join("");
+    sel.value="1";wrap.style.display="";onUnitPick();
+  }else{wrap.style.display="none";var h=document.getElementById("qtyHint");if(h)h.textContent="";}
+}
+function onUnitPick(){
+  var sel=document.getElementById("f_unitPick");var f=sel?+sel.value||1:1;
+  var q=+document.getElementById("f_qty").value||0;var h=document.getElementById("qtyHint");
+  if(h)h.textContent=(f>1?("本次入库 = "+q*f+" 个（基础单位）"):"");
+}
+function pickSel(which){try{if(which==="brand"){var s=document.getElementById("f_brandSel");if(s&&s.value)document.getElementById("f_brand").value=s.value;}else{var s2=document.getElementById("f_catSel");if(s2&&s2.value)document.getElementById("f_cat").value=s2.value;}}catch(e){}}
+function fillAttach(){var s=document.getElementById("f_attach");if(!s||!DBcache)return;s.innerHTML='<option value="">不归入，作为新商品</option>'+DBcache.products.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join("");}
+function lookup(){
+  const bc=document.getElementById("f_bc").value.trim();
+  const nm=document.getElementById("f_name").value.trim();
+  const hint=document.getElementById("foundHint");
+  if(!DBcache){if(hint)hint.innerHTML="";return null;}
+  let p=null;
+  if(bc)p=DBcache.products.find(x=>String(x.barcode||"").trim()===bc||((x.variants||[]).some(function(v){return String(v.barcode||"").trim()===bc;})));
+  if(!p&&nm)p=DBcache.products.find(x=>String(x.name||"").trim()===nm);
+  if(p){
+    const fn=document.getElementById("f_name"),fb=document.getElementById("f_brand"),fc=document.getElementById("f_cat");
+    if(!fn.value)fn.value=p.name||"";
+    if(!fb.value)fb.value=p.brand||"";
+    if(!fc.value&&p.category)fc.value=p.category;
+    if(p.cost&&!document.getElementById("f_cost").value)document.getElementById("f_cost").value=p.cost;
+    if(p.price&&!document.getElementById("f_price").value)document.getElementById("f_price").value=p.price;
+    if(p.unit)document.getElementById("f_unit").value=p.unit;
+    var _vm="";(p.variants||[]).forEach(function(v){if(String(v.barcode||"").trim()===bc)_vm=v.name;});
+    if(hint)hint.innerHTML='<div style="background:#10321f;border:1px solid #1c5a37;border-radius:10px;padding:9px 11px;margin-bottom:6px;color:#86efac">✅ 码库已有：<b>'+(p.name||"")+'</b>'+(_vm?('（规格：'+_vm+'）'):'')+'（库存 '+p.stock+'）· 本次入库将累加</div>';
+    if(typeof setupUnitPick==="function")setupUnitPick(p);
+    try{document.getElementById("attachWrap").style.display="none";}catch(e){}
+  } else if(bc||nm){
+    if(hint)hint.innerHTML='<div style="background:#33260e;border:1px solid #6b4e14;border-radius:10px;padding:9px 11px;margin-bottom:6px;color:#fcd34d">🆕 新条码（码库还没有）：填名称/品牌/类目/数量再入库；<b>若它是某款已有的另一个规格（如白光/黄光），请在下面「归入已有商品」里选那款、填规格名</b>，就会并到同一商品下。</div>';
+    try{document.getElementById("attachWrap").style.display="";fillAttach();}catch(e){}
+  } else { if(hint)hint.innerHTML=""; }
+  return p;
+}
+function useCode(code){
+  code=String(code||"").trim();if(!code)return;
+  document.getElementById("f_bc").value=code;
+  document.getElementById("f_name").value="";
+  document.getElementById("f_brand").value="";
+  document.getElementById("f_cat").value="";
+  document.getElementById("f_cost").value="";
+  document.getElementById("f_price").value="";
+  if("vibrate" in navigator)navigator.vibrate(60);
+  const p=lookup();
+  if(p){
+    document.getElementById("f_qty").value=continuous?(document.getElementById("defQty").value||1):1;
+    if(continuous){
+      submitScan(true);
+    } else {
+      toast('✅ 已有该商品：'+(p.name||"")+'（库存 '+p.stock+'），信息已带出，填数量即可');
+      var q=document.getElementById("f_qty");q.focus();try{q.select();}catch(e){}
+    }
+  } else {
+    toast('🆕 新条码，请填写名称/品牌/类目/数量后入库');
+    try{document.getElementById("f_name").focus();}catch(e){}
+  }
+}
+let frameCount=0, zxReader=null, camRunning=false;
+function updateStatus(m){const el=document.getElementById("statusLine");if(el)el.innerHTML=m?('<span style="color:#7dd3fc">'+m+'</span>'):"";}
+function setMode(){var m=(document.querySelector("input[name=smode]:checked")||{}).value||"in";var b=document.getElementById("subBtn");if(b)b.textContent=(m==="out"?"✅ 出库（扣减库存）":"✅ 入库（同步到库存）");}
+var _ac=null;
+function beep(){try{_ac=_ac||new (window.AudioContext||window.webkitAudioContext)();if(_ac.state==="suspended"){_ac.resume();}var o=_ac.createOscillator(),g=_ac.createGain();o.connect(g);g.connect(_ac.destination);o.type="sine";o.frequency.value=930;g.gain.value=0.18;o.start();setTimeout(function(){try{o.stop();}catch(e){}},150);}catch(e){}}
+function handleCode(v){v=String(v||"").trim();if(!v)return;const now=Date.now();if(v===lastCode&&now-lastTime<3500)return;lastCode=v;lastTime=now;try{beep();}catch(e){} if("vibrate" in navigator)navigator.vibrate([90,40,90]); try{toast("✅ 已识别："+v);}catch(e){} useCode(v);
+  try{ if(typeof stopCam==="function") stopCam(); }catch(e){}
+  try{ var _ff=document.getElementById("f_name"); if(_ff&&_ff.scrollIntoView)_ff.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}}
+let frameTimer=null,_busy=false,_reader=null;
+function startFrameScan(){
+  if(!window.ZXing){return;}
+  if(!_reader){try{_reader=new ZXing.BrowserMultiFormatReader();}catch(e){return;}}
+  if(frameTimer){clearInterval(frameTimer);frameTimer=null;}
+  frameTimer=setInterval(function(){
+    if(!camRunning||_busy){return;}
+    var v=document.querySelector("#reader video")||document.getElementById("cam");
+    if(!v||!v.videoWidth){return;}
+    _busy=true;
+    try{
+      var cv=document.createElement("canvas");
+      var w=v.videoWidth,h=v.videoHeight,mx=1000;
+      if(w>mx){h=Math.round(h*mx/w);w=mx;}
+      cv.width=w;cv.height=h;
+      cv.getContext("2d").drawImage(v,0,0,w,h);
+      var url=cv.toDataURL("image/jpeg",0.85);
+      _reader.decodeFromImageUrl(url).then(function(res){
+        _busy=false;frameCount++;
+        var si=document.getElementById("scanInfo");if(si)si.textContent="已抓帧 "+frameCount+" 次 · 识别中…";
+        if(res)handleCode(res.getText());
+      }).catch(function(){
+        _busy=false;frameCount++;
+        var si=document.getElementById("scanInfo");if(si)si.textContent="已抓帧 "+frameCount+" 次 · 识别中…";
+      });
+    }catch(e){_busy=false;}
+  },500);
+}
+function decodePhoto(inp){
+  var f=inp.files&&inp.files[0]; if(!f){return;}
+  if(!window.ZXing){ toast("识别库未加载，请刷新页面"); inp.value=""; return; }
+  updateStatus("正在识别照片…");
+  var url=URL.createObjectURL(f);
+  var r=new ZXing.BrowserMultiFormatReader();
+  r.decodeFromImageUrl(url).then(function(res){
+    try{URL.revokeObjectURL(url);}catch(e){}
+    var txt=res&&(res.getText?res.getText():res.text);
+    if(txt){ handleCode(txt); toast("✅ 已识别："+txt); }
+    else { updateStatus("未识别到条码"); toast("没认出来，再拍一张（对准、清晰点）"); }
+  }).catch(function(){
+    try{URL.revokeObjectURL(url);}catch(e){}
+    updateStatus("未识别到条码"); toast("没认出来，再拍一张（对准、清晰点）");
+  });
+  inp.value="";
+}
+function stopCam(){
+  camRunning=false;
+  if(frameTimer){clearInterval(frameTimer);frameTimer=null;}
+  try{ if(window.Quagga){ Quagga.stop(); } }catch(e){}
+  var b=document.getElementById("camBtn"); if(b)b.textContent="🎥 开启摄像头";
+  var sl=document.getElementById("scanline"); if(sl)sl.style.display="none";
+  updateStatus("");
+}
+function toggleCam(){
+  if(camRunning){ stopCam(); return; }
+  if(!window.Quagga){ toast("识别库未加载，请刷新页面"); return; }
+  document.getElementById("camBtn").textContent="⏹ 停止";
+  updateStatus("正在开启摄像头…");
+  var ph=document.getElementById("camPh"); if(ph)ph.style.display="none";
+  var sl=document.getElementById("scanline"); if(sl)sl.style.display="block";
+  try{
+    Quagga.init({
+      inputStream:{ type:"LiveStream", target:document.querySelector("#reader"), constraints:{ facingMode:{ideal:"environment"}, width:{ideal:1280}, height:{ideal:720} } },
+      locator:{ patchSize:"medium", halfSample:true },
+      numOfWorkers:0,
+      frequency:10,
+      decoder:{ readers:["ean_reader","ean_8_reader","code_128_reader","code_39_reader","code_93_reader","upc_reader","upc_e_reader","codabar_reader","i2of5_reader"], multiple:false },
+      locate:true
+    }, function(err){
+      if(err){ camRunning=false; document.getElementById("camBtn").textContent="🎥 开启摄像头"; updateStatus(""); toast("无法打开摄像头："+((err&&(err.message||err))||err)); return; }
+      try{ Quagga.start(); }catch(e){}
+      camRunning=true;
+      startFrameScan();
+      updateStatus("摄像头已开启，请对准商品条码…");
+      lastTime=Date.now();
+      setTimeout(function(){try{if(camRunning&&(Date.now()-lastTime)>7500)updateStatus("还没识别到？把条码放近占满取景框、对准、别抖动、光线足一点");}catch(e){}},8000);
+    });
+    if(!window._qHooked){
+      window._qHooked=true;
+      Quagga.onDetected(function(result){
+        try{
+          var code=result&&result.codeResult&&result.codeResult.code;
+          frameCount++;
+          var si=document.getElementById("scanInfo"); if(si)si.textContent="已识别 "+frameCount+" 次…";
+          if(code) handleCode(code);
+        }catch(e){}
+      });
+    }
+  }catch(e){ camRunning=false; document.getElementById("camBtn").textContent="🎥 开启摄像头"; toast("无法打开摄像头："+e.message); }
+}
+async function submitScan(auto){
+  const payload={mode:((document.querySelector("input[name=smode]:checked")||{}).value||"in"),barcode:document.getElementById("f_bc").value.trim(),name:document.getElementById("f_name").value.trim(),brand:document.getElementById("f_brand").value.trim(),category:document.getElementById("f_cat").value.trim(),qty:((+document.getElementById("f_qty").value||0)*((function(){var s=document.getElementById("f_unitPick");var w=document.getElementById("unitPickWrap");return (s&&w&&w.style.display!=="none")?(+s.value||1):1;})())),cost:+document.getElementById("f_cost").value||0,price:+document.getElementById("f_price").value||0,unit:document.getElementById("f_unit").value.trim()||"个",attachProductId:((function(){var w=document.getElementById("attachWrap"),s=document.getElementById("f_attach");return (w&&w.style.display!=="none"&&s)?s.value:"";})()),variantName:((function(){var w=document.getElementById("attachWrap"),s=document.getElementById("f_varName");return (w&&w.style.display!=="none"&&s)?s.value.trim():"";})())};
+  if(!payload.barcode&&!payload.name){if(!auto)toast('<span class="err">请先扫码或填写条形码/名称</span>');return;}
+  if(!payload.category){if(!auto)toast('<span class="err">请选择/输入类目</span>');return;}
+  if(payload.qty<=0){if(!auto)toast('<span class="err">请填写数量</span>');return;}
+  const btn=document.getElementById("subBtn");btn.disabled=true;if(!auto)btn.textContent="提交中…";
+  let j=null;
+  try{const r=await fetch(API+"/scanAdd",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(r.ok){j=await r.json();online=true;setTag();}}catch(e){}
+  if(!j||!j.ok){
+    try{const db=await cloudGet()||{products:[],brands:[],cats:[]};const res=mergeInto(db,payload);const ok=await cloudPut(db);if(ok){j={ok:true,name:res.name,stock:res.stock};}}
+    catch(e){}
+  }
+  if(j&&j.ok){
+    toast('<span class="ok">✅ </span>'+j.name+' +'+payload.qty+'（库存 '+j.stock+'）');
+    logLine('<span class="ok">✅</span> '+j.name+' +'+payload.qty+' → 库存 '+j.stock+'　<span style="color:#5b6b86">'+new Date().toTimeString().slice(0,8)+'</span>');
+    // 清空下一件（保留类目，便于连续扫）
+    ["f_bc","f_name","f_brand","f_cost","f_price"].forEach(id=>document.getElementById(id).value="");
+    document.getElementById("f_qty").value=1;
+    var _uw=document.getElementById("unitPickWrap");if(_uw)_uw.style.display="none";
+    document.getElementById("foundHint").innerHTML="";
+    await loadData();
+    try{ var _aw=document.getElementById("attachWrap"); if(_aw)_aw.style.display="none"; }catch(e){}
+    try{ if(typeof toggleCam==="function" && typeof camRunning!=="undefined" && !camRunning) toggleCam(); }catch(e){}
+    try{ var _cb=document.getElementById("camBtn"); if(_cb&&_cb.scrollIntoView)_cb.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}
+    if(continuous){ lastCode=""; if(!running){/*保持相机*/} }
+    else { document.getElementById("f_bc").focus(); }
+  } else {
+    toast('<span class="err">入库失败，请检查网络/云端</span>');
+  }
+  btn.disabled=false;btn.textContent="✅ 入库（同步到库存）";
+}
+
+function diag(){try{var sec=window.isSecureContext;var gum=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);var bd=("BarcodeDetector" in window);var el=document.getElementById("diagLine");if(el)el.textContent="连接:"+(sec?"安全OK":"不安全")+" · 摄像头接口:"+(gum?"有":"无")+" · 系统识别:"+(bd?"有":"无");}catch(e){}}
+loadData();syncTick();try{diag();}catch(e){}
+setTimeout(function(){try{toggleCam();}catch(e){}},600);
+setInterval(refreshData,5000);
+document.addEventListener("visibilitychange",function(){if(!document.hidden)refreshData();});
+// 实时推送
+let _rtWs=null;
+function startRealtime(){
+  try{
+    const ws=new WebSocket('wss://jzclolmbxdtmfrylrifr.supabase.co/realtime/v1/websocket?apikey='+encodeURIComponent(CLOUD_KEY)+'&vsn=1.0.0');_rtWs=ws;
+    ws.onopen=function(){try{ws.send(JSON.stringify({topic:'realtime:public:'+CLOUD_TABLE,event:'phx_join',payload:{config:{postgres_changes:[{event:'*',schema:'public',table:CLOUD_TABLE}]}},ref:'1'}));}catch(e){}};
+    ws.onmessage=function(e){const s=String(e.data);if(s.indexOf('postgres_changes')>=0&&s.indexOf('"event":"')>=0&&s.indexOf('system')<0)refreshData();};
+    ws.onclose=function(){setTimeout(startRealtime,15000);};ws.onerror=function(){};
+  }catch(e){}
+}
+startRealtime();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}
+</script>
+</body></html>
