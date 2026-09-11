@@ -3295,7 +3295,7 @@ function quickStatus(id,status){
 }
 function syncAcct(acctSelId,platSelId){
   const p=$("#"+platSelId).value;
-  const opts=DB.accounts.filter(a=>a.platformId===p);
+  const opts=DB.accounts.filter(a=>a.platformId===p&&canSee(a.id));
   const sel=document.getElementById(acctSelId);
   sel.innerHTML='<option value="">请选择账号</option>'+opts.map(a=>`<option value="${a.id}">${esc(a.name)}（${esc(a.holder)}）</option>`).join("");
   if(opts.length===1)sel.value=opts[0].id;
@@ -3754,7 +3754,7 @@ function openExpenseForm(id){
   if(id){const e=DB.expenses.find(x=>x.id===id);
     openModal(`<div class="modal-head"><h3>💸 编辑支出</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">
       <div class="field"><label class="req">平台</label><select id="e_p" onchange="syncExpAcct()">${myPlatforms().map(p=>`<option value="${p.id}" ${e.platformId===p.id?"selected":""}>${p.em} ${p.name}</option>`).join("")}</select></div>
-      <div class="field"><label>账号</label><select id="e_a">${DB.accounts.filter(a=>a.platformId===e.platformId).map(a=>`<option value="${a.id}" ${e.accountId===a.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></div>
+      <div class="field"><label>账号</label><select id="e_a">${DB.accounts.filter(a=>a.platformId===e.platformId&&canSee(a.id)).map(a=>`<option value="${a.id}" ${e.accountId===a.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></div>
       <div class="field"><div class="row"><div><label class="req">分类</label><select id="e_cat">${catOpts(e.cat)}</select></div><div><label class="req">金额(¥)</label><input id="e_amt" type="number" step="0.01" value="${e.amount}"></div></div></div>
       <div class="field"><label>备注</label><textarea id="e_note">${esc(e.note)}</textarea></div>
       <div class="field"><label>日期</label><input id="e_date" type="date" value="${e.date}"></div>
@@ -3773,7 +3773,7 @@ function openExpenseForm(id){
 }
 function syncExpAcct(){
   const p=$("#e_p").value;
-  const opts=DB.accounts.filter(a=>a.platformId===p);
+  const opts=DB.accounts.filter(a=>a.platformId===p&&canSee(a.id));
   $("#e_a").innerHTML=opts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join("")||'<option value="">无账号</option>';
 }
 function saveExpense(id){
