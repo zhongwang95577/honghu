@@ -86,6 +86,9 @@ h3.sec .dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(#6
 .card h4{font-size:15px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px;color:var(--text)}
 .table-wrap{padding:0 26px 10px;overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:640px}
+.tbl-nowrap td{white-space:nowrap}
+.tbl-nowrap thead th:first-child,.tbl-nowrap tbody td:first-child{width:34px}
+.tbl-nowrap td .cellsub{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
 thead th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;padding:12px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
 tbody td{padding:13px 14px;font-size:13.5px;border-bottom:1px solid #eef2f7;vertical-align:middle;color:var(--text)}
 tbody tr{transition:.15s}
@@ -194,7 +197,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
 
@@ -2706,7 +2709,10 @@ function toast(msg,type="ok"){
 function openModal(html){$("#modal").innerHTML=html;$("#overlay").classList.add("show");}
 function closeModal(){$("#overlay").classList.remove("show");$("#modal").innerHTML="";}
 $("#overlay").addEventListener("click",e=>{/* 点遮罩不关闭，避免误触丢失输入 */});
+function softRefresh(){ try{ closeModal(); if(typeof cloudPoll==="function")cloudPoll(); if(typeof pollLocalServer==="function")pollLocalServer(); render(); if(typeof animate==="function")animate(); toast("已刷新（若仍卡，按 F5 重新载入）"); }catch(e){ try{ location.reload(); }catch(_){} } }
+function hardRefresh(){ try{ location.reload(); }catch(e){} }
 document.addEventListener("keydown",e=>{
+  if(e.key==="F5"||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="r")){e.preventDefault();hardRefresh();return;}
   if(e.key==="Escape"){closeModal();return;}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="n"){e.preventDefault();openOrderForm();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){const btn=document.querySelector("#modal .btn-primary[data-save]");if(btn){e.preventDefault();btn.click();}}
@@ -3122,7 +3128,7 @@ function renderOrderTbl(){
   if(a!=="all")rows=rows.filter(o=>o.accountId===a);
   if(q)rows=rows.filter(o=>[o.buyer,o.contact,o.note,orderName(o)].join(" ").toLowerCase().includes(q));
   if(!rows.length){el.innerHTML=`<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">🧾</div><p>没有匹配的订单</p></div></div>`;return;}
-  el.innerHTML=`<div class="table-wrap"><table>
+  el.innerHTML=`<div class="table-wrap"><table class="tbl-nowrap">
     <thead><tr><th style="width:30px"><input type="checkbox" name="selall" onchange="selAll(this.checked)"></th><th>销售日期</th><th>平台</th><th>账号</th><th>商品</th><th>单价×数量</th><th>实付(含运)</th><th>订单费用</th><th>净收入</th><th>预估利润</th><th>退款</th><th>买家 / 联系方式</th><th>买家备注</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>${rows.map(o=>{const fees=orderFees(o),net=orderNet(o),profit=net-orderCost(o),rf=o.refund;return `<tr>
       <td><input type="checkbox" ${selOrders.has(o.id)?"checked":""} onchange="toggleSel('${o.id}',this.checked)"></td>
@@ -3191,12 +3197,12 @@ function openOrderForm(id){
       ${custDl()}
       ${feeBlock(o)}
       <div class="field"><div class="row">
-        <div><label class="req">买家称呼</label><input id="f_buyer" list="custList" onchange="pickCustomer()" value="${esc(o.buyer)}"></div>
+        <div><label class="req">买家称呼</label><input id="f_buyer" list="custList" onchange="pickCustomer()" oninput="syncCreditCus()" value="${esc(o.buyer)}"></div>
         <div><label>联系方式</label><input id="f_contact" value="${esc(o.contact)}" placeholder="手机 / 微信"></div>
       </div></div>
       <div class="field"><label>买家备注</label><textarea id="f_note" placeholder="发货要求、安装时间、优惠说明等">${esc(o.note)}</textarea></div>
       <div class="field"><label>结算方式</label><div style="display:flex;gap:16px"><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="pmode" value="cash" ${o.payMode!=="credit"?"checked":""} onchange="onPMode()"> 现结</label><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="pmode" value="credit" ${o.payMode==="credit"?"checked":""} onchange="onPMode()"> 挂账（微信赊账）</label></div>
-        <div id="creditBox" ${o.payMode==="credit"?"":"style=\"display:none\""} style="margin-top:8px"><div style="display:flex;gap:10px"><div style="flex:1"><label>挂账客户名</label><input id="f_ccus" value="${esc(o.creditCustomer||"")}" placeholder="如：XX汽修厂"></div><div style="flex:1"><label>结账日（统一结算日）</label><input id="f_cdue" type="date" value="${esc(o.creditDue||"")}"></div></div></div></div>
+        <div id="creditBox" ${o.payMode==="credit"?"":"style=\"display:none\""} style="margin-top:8px"><div style="display:flex;gap:10px"><div style="flex:1"><label>挂账客户名</label><input id="f_ccus" value="${esc(o.creditCustomer||"")}" placeholder="如：XX汽修厂"></div><input id="f_cdue" type="date" value="${esc(o.creditDue||"")}" style="display:none"></div></div></div>
       <div class="field"><div class="row">
         <div><label>销售日期</label><input id="f_date" type="date" value="${o.date}"></div>
         <div><label>状态</label><select id="f_status" onchange="toggleRefund()"><option ${o.status==="待发货"?"selected":""}>待发货</option><option ${o.status==="已发货"?"selected":""}>已发货</option><option ${o.status==="已完成"?"selected":""}>已完成</option><option ${o.status==="已退款"?"selected":""}>已退款</option><option ${o.status==="已退货"?"selected":""}>已退货</option><option ${o.status==="已换货"?"selected":""}>已换货</option></select></div>
@@ -3227,12 +3233,12 @@ function openOrderForm(id){
       ${custDl()}
       ${feeBlock()}
       <div class="field"><div class="row">
-        <div><label class="req">买家称呼</label><input id="f_buyer" list="custList" onchange="pickCustomer()" placeholder="输入或选客户"></div>
+        <div><label class="req">买家称呼</label><input id="f_buyer" list="custList" onchange="pickCustomer()" oninput="syncCreditCus()" placeholder="输入或选客户"></div>
         <div><label>联系方式</label><input id="f_contact" placeholder="手机 / 微信"></div>
       </div></div>
       <div class="field"><label>买家备注</label><textarea id="f_note" placeholder="发货要求、安装时间、优惠说明等"></textarea></div>
       <div class="field"><label>结算方式</label><div style="display:flex;gap:16px"><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="pmode" value="cash" checked onchange="onPMode()"> 现结</label><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="pmode" value="credit" onchange="onPMode()"> 挂账（微信赊账）</label></div>
-        <div id="creditBox" style="display:none;margin-top:8px"><div style="display:flex;gap:10px"><div style="flex:1"><label>挂账客户名</label><input id="f_ccus" placeholder="如：XX汽修厂"></div><div style="flex:1"><label>结账日（统一结算日）</label><input id="f_cdue" type="date"></div></div></div></div>
+        <div id="creditBox" style="display:none;margin-top:8px"><div style="display:flex;gap:10px"><div style="flex:1"><label>挂账客户名</label><input id="f_ccus" placeholder="如：XX汽修厂"></div><input id="f_cdue" type="date" style="display:none"></div></div></div>
       <div class="field"><div class="row">
         <div><label>销售日期</label><input id="f_date" type="date"></div>
         <div><label>状态</label><select id="f_status" onchange="toggleRefund()"><option>待发货</option><option>已发货</option><option>已完成</option><option>已退款</option><option>已退货</option><option>已换货</option></select></div>
@@ -3405,13 +3411,27 @@ function onOrdPlat(){
   renderOrderTbl();
 }
 function filterProd(q){
-  q=(q||"").toLowerCase();const sel=$("#f_prod");if(!sel)return;
-  let vis=0,first=null;
-  [...sel.options].forEach(op=>{const hide=q&&String(op.text).toLowerCase().indexOf(q)<0;op.hidden=hide;if(!hide){vis++;if(!first)first=op;}});
-  if(q&&vis===1&&first){sel.value=first.value;autoPrice("f_price");autoRate(true);}
+  q=(q||"").toLowerCase().trim();
+  const sel=$("#f_prod");if(!sel)return;
+  const cur=sel.value;
+  const list=(DB.products||[]).filter(p=>!q||((p.name||"").toLowerCase().indexOf(q)>=0||String(p.sku||"").toLowerCase().indexOf(q)>=0||String(p.barcode||"").toLowerCase().indexOf(q)>=0));
+  sel.innerHTML='<option value="">请选择商品</option>'+(list.length?list.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'（'+p.price+'）</option>').join(""):'<option value="" disabled>（无匹配商品）</option>');
+  if(cur&&list.some(p=>p.id===cur))sel.value=cur;
+  if(q&&list.length===1){sel.value=list[0].id;autoPrice("f_price");autoRate(true);if(typeof fillVariantSel==="function")fillVariantSel();if(typeof fillUnitSel==="function")fillUnitSel();}
 }
 function onPType(){const v=document.querySelector("input[name=ptype]:checked").value;const inv=document.getElementById("invProd"),tp=document.getElementById("tempProd");if(inv)inv.style.display=v==="temp"?"none":"";if(tp)tp.style.display=v==="temp"?"":"none";recalcOrder();}
-function onPMode(){const v=document.querySelector("input[name=pmode]:checked").value;const cb=document.getElementById("creditBox");if(cb)cb.style.display=v==="credit"?"":"none";}
+function onPMode(){const v=document.querySelector("input[name=pmode]:checked").value;const cb=document.getElementById("creditBox");if(cb)cb.style.display=v==="credit"?"":"none";syncCreditCus(true);}
+var _ccLastBuyer="";
+function syncCreditCus(force){
+  try{
+    var b=document.getElementById("f_buyer"),cc=document.getElementById("f_ccus");
+    if(!b||!cc)return;
+    var r=document.querySelector("input[name=pmode]:checked");
+    if(!r||r.value!=="credit")return;
+    if(force||!cc.value||cc.value===_ccLastBuyer){cc.value=b.value;}
+    _ccLastBuyer=b.value;
+  }catch(e){}
+}
 function saveOrder(id){
   const buy=$("#f_buyer").value.trim();
   const platformId=$("#f_p").value,accountId=$("#f_a").value;
@@ -3443,11 +3463,12 @@ function saveOrder(id){
   else{refund=null;}
   const pmode=document.querySelector("input[name=pmode]:checked").value;
   let creditCustomer="",creditDue="",creditPaid=0,creditPayments=[];
-  if(pmode==="credit"){creditCustomer=$("#f_ccus").value.trim();creditDue=$("#f_cdue").value||new Date().toISOString().slice(0,10);if(!creditCustomer){toast("挂账请填写客户名","err");return;}}
+  if(pmode==="credit"){creditCustomer=$("#f_ccus").value.trim();creditDue="";if(!creditCustomer){toast("挂账请填写客户名","err");return;}}
   if(id){const old=DB.orders.find(x=>x.id===id);if(old&&pmode==="credit"){creditPaid=+old.creditPaid||0;creditPayments=old.creditPayments||[];}}
   const obj={platformId,accountId,productId,isTemp,productName,variantName,orderUnit,tempCost,qty,price,buyerShip,commRate,comm,extraRate,extra,shipping,other,refund,payMode:pmode,creditCustomer,creditDue,creditPaid,creditPayments,
     buyer:buy,contact:$("#f_contact").value.trim(),note:$("#f_note").value.trim(),
     date:$("#f_date").value||new Date().toISOString().slice(0,10),status:st};
+  if(!id)obj.seller=(CUR&&CUR.username)?CUR.username:"";
   if(id){const old=DB.orders.find(x=>x.id===id);
     if(old){stockAdj(DB.products.find(p=>p.id===old.productId),old.variantName,effQty(old));}
     const newProd=DB.products.find(p=>p.id===productId);stockAdj(newProd,obj.variantName,-effQty(obj));if(newProd&&newProd.stock<0)toast("⚠️ 库存不足，已超卖 "+(-newProd.stock)+" 件","warn");
@@ -3705,13 +3726,14 @@ function vReconBody(){
   </div>
   <h3 class="sec"><span class="dot"></span>按平台独立对账</h3>
   <div class="grid g-2" style="padding-top:14px">
-    ${myPlatforms().map(p=>{
-      const tt=platformTotals(p.id);const margin=tt.sale?tt.profit/tt.sale*100:0;
+    ${myPlatforms().filter(p=>(pf==="all"||p.id===pf)).map(p=>{
+      const _accs=visibleUid(p.id).filter(a=>(ac==="all"||a.id===ac));if(!_accs.length)return "";
+      const tt=platformTotals(p.id,ac);const margin=tt.sale?tt.profit/tt.sale*100:0;
       return `<div class="acct reveal">
         <div class="head"><div class="av" style="background:${p.c}">${p.em}</div>
-          <div><div class="name">${esc(p.name)}</div><div class="holder">${visibleUid(p.id).length} 个账号 · 含平台扣点/运费核算</div></div>
+          <div><div class="name">${esc(p.name)}</div><div class="holder">${_accs.length} 个账号 · 含平台扣点/运费核算</div></div>
         </div>
-        <div class="meta">${visibleUid(p.id).map(a=>{const at=platformTotals(p.id,a.id);return `· ${esc(a.name)}（${esc(a.holder)}）：收入 <b style="color:var(--green)">${yuan(at.sale)}</b> · 净利 <b style="color:${at.profit>=0?"var(--green)":"var(--red)"}">${yuan(at.profit)}</b>`;}).join("<br>")||"暂无账号"}</div>
+        <div class="meta">${_accs.map(a=>{const at=platformTotals(p.id,a.id);return `<div onclick="reconAcctDetail('${p.id}','${a.id}')" style="cursor:pointer;padding:6px 0" title="点击查看每笔明细">▸ ${esc(a.name)}（${esc(a.holder)}）：收入 <b style="color:var(--green)">${yuan(at.sale)}</b> · 净利 <b style="color:${at.profit>=0?"var(--green)":"var(--red)"}">${yuan(at.profit)}</b></div>`;}).join("")||"暂无账号"}</div>
         <div class="sum">收入 ${yuan(tt.sale)} · 净收入 ${yuan(tt.net)}</div>
         <div style="display:flex;gap:12px;margin-top:10px;font-size:12px;color:var(--muted);flex-wrap:wrap">
           <span>扣费 <b style="color:var(--amber)">${yuan(tt.fees)}</b></span>
@@ -3723,6 +3745,34 @@ function vReconBody(){
       </div>`;}).join("")}
   </div>`;
 }
+function reconAcctDetail(pid,aid){
+  var a=DB.accounts.find(function(x){return x.id===aid;})||{};
+  var t=platformTotals(pid,aid);
+  var orders=DB.orders.filter(function(o){return o.accountId===aid&&canSee(o.accountId);}).sort(function(x,y){return String(y.date||"").localeCompare(String(x.date||""));});
+  var exps=DB.expenses.filter(function(e){return e.accountId===aid&&canSee(e.accountId);}).sort(function(x,y){return String(y.date||"").localeCompare(String(x.date||""));});
+  var h="";
+  h+='<div class="modal-head"><h3>📄 '+esc(a.name||"")+'（'+esc(a.holder||"")+'）· 对账明细</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>';
+  h+='<div class="modal-body">';
+  h+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px;font-size:13px">';
+  h+='<span>销售额 <b style="color:var(--green)">'+yuan(t.sale)+'</b></span>';
+  h+='<span>订单费用 <b style="color:var(--amber)">'+yuan(t.fees)+'</b></span>';
+  h+='<span>退款 <b style="color:var(--red)">'+yuan(t.refund||0)+'</b></span>';
+  h+='<span>商品成本 <b>'+yuan(t.cogs)+'</b></span>';
+  h+='<span>平台支出 <b style="color:var(--red)">'+yuan(t.exp)+'</b></span>';
+  h+='<span>净利 <b style="color:'+(t.profit>=0?'var(--green)':'var(--red)')+'">'+yuan(t.profit)+'</b></span>';
+  h+='</div>';
+  h+='<h4 style="margin:10px 0 6px">订单明细（'+orders.length+' 笔）</h4>';
+  h+='<div class="table-wrap" style="padding:0"><table class="tbl-nowrap"><thead><tr><th>销售日期</th><th>商品</th><th>数量</th><th>实付</th><th>订单费用</th><th>净收入</th><th>买家</th><th>销售</th></tr></thead><tbody>';
+  h+=orders.length?orders.map(function(o){var fees=orderFees(o),net=orderNet(o);return '<tr><td>'+esc(o.date)+'</td><td>'+esc(orderName(o))+'</td><td>'+(o.qty||0)+'</td><td style="color:var(--green)">'+yuan(orderPaid(o))+'</td><td style="color:var(--amber)">'+yuan(fees)+'</td><td>'+yuan(net)+'</td><td>'+esc(o.buyer||"")+'</td><td>'+esc(o.seller||"—")+'</td></tr>';}).join(""):'<tr><td colspan="8" style="text-align:center;color:var(--muted)">无订单</td></tr>';
+  h+='</tbody></table></div>';
+  h+='<h4 style="margin:14px 0 6px">支出明细（'+exps.length+' 笔）</h4>';
+  h+='<div class="table-wrap" style="padding:0"><table class="tbl-nowrap"><thead><tr><th>日期</th><th>分类</th><th>备注</th><th>金额</th></tr></thead><tbody>';
+  h+=exps.length?exps.map(function(e){return '<tr><td>'+esc(e.date)+'</td><td>'+esc(e.cat||"")+'</td><td>'+esc(e.note||"")+'</td><td style="color:var(--red)">－'+yuan(e.amount)+'</td></tr>';}).join(""):'<tr><td colspan="4" style="text-align:center;color:var(--muted)">无支出</td></tr>';
+  h+='</tbody></table></div>';
+  h+='</div>';
+  openModal(h);
+}
+
 function reconRefresh(){$("#view").innerHTML=vRecon();animate();}
 
 /* ================= RENDER: EXPENSE ================= */
@@ -3803,20 +3853,18 @@ function vPlatform(){
           <div style="flex:1"><div class="name" style="font-weight:700;font-size:16px">${esc(p.name)}</div>
             <div style="font-size:12px;color:var(--muted)">${accts.length} 个账号 · 累计 ${yuan(t.sale)}</div></div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;flex-direction:column;gap:6px">
         ${accts.length?accts.map(a=>`
-          <div class="acct" style="padding:14px 16px">
-            <div class="head">
-              <div class="av" style="width:38px;height:38px;font-size:16px;background:linear-gradient(135deg,${p.c},var(--accent-2))">${esc(a.name).charAt(0)}</div>
-              <div style="flex:1"><div class="name" style="font-size:14px">${esc(a.name)}</div>
-                <div class="holder">持有人：${esc(a.holder||"—")}</div></div>
-              ${isAdmin()?`<div style="display:flex;gap:4px">
+          <div class="acct" style="padding:8px 11px">
+            <div class="head" style="align-items:center">
+              <div class="av" style="width:26px;height:26px;font-size:12px;background:linear-gradient(135deg,${p.c},var(--accent-2))">${esc(a.name).charAt(0)}</div>
+              <div style="flex:1;min-width:0"><div class="name" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.name)} <span style="color:var(--muted);font-weight:400">· ${esc(a.holder||"—")}</span></div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px">销售额 ${yuan(platformTotals(p.id,a.id).sale)}${a.note?" · "+esc(a.note):""}</div></div>
+              ${isAdmin()?`<div style="display:flex;gap:2px">
                 <div class="icon-btn edit" title="编辑" onclick="openAccountForm('${a.id}')">✏️</div>
                 <div class="icon-btn" title="删除" style="color:var(--red)" onclick="delAccount('${a.id}')">🗑️</div>
               </div>`:``}
             </div>
-            <div class="meta" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">备注：${esc(a.note||"—")}</div>
-            <div class="sum">销售额：${yuan(platformTotals(p.id,a.id).sale)}</div>
           </div>`).join("")
         :`<div class="empty" style="padding:16px"><div class="big" style="font-size:30px">🔑</div><p>该平台暂无账号，点击右上角新增</p></div>`}
         </div>
@@ -4032,20 +4080,40 @@ function clearData(){
 
 /* ================= 挂账应收 (可分次收款) ================= */
 let cuQ="";
+let cF={p:"all",a:"all"};
+var cuSel={};
+function toggleCuSel(id,on){if(on)cuSel[id]=1;else delete cuSel[id];}
+function cuSelAll(on){document.querySelectorAll("#creditBody .cuChk").forEach(function(c){c.checked=on;if(on)cuSel[c.value]=1;else delete cuSel[c.value];});}
+function delCreditOrder(id){
+  if(!confirm("确定删除这条挂账记录？（对应订单会被删除，已扣库存自动回补）"))return;
+  const o=DB.orders.find(x=>x.id===id);
+  if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+effQty(o));}
+  DB.orders=DB.orders.filter(x=>x.id!==id);save();delete cuSel[id];toast("已删除该挂账记录，库存已回补","warn");renderCreditTbl();
+}
+function delCreditSel(){
+  const ids=Object.keys(cuSel);if(!ids.length){toast("请先勾选要删除的记录","err");return;}
+  if(!confirm("确定删除选中的 "+ids.length+" 条挂账记录？（对应订单会删除，库存回补）"))return;
+  ids.forEach(function(id){const o=DB.orders.find(x=>x.id===id);if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+effQty(o));}});
+  DB.orders=DB.orders.filter(x=>ids.indexOf(x.id)<0);cuSel={};save();toast("已删除 "+ids.length+" 条，库存已回补","warn");renderCreditTbl();
+}
+function rebuildCuA(){var s=document.getElementById("cu_a");if(!s)return;s.innerHTML='<option value="all">全部账号</option>'+DB.accounts.filter(a=>canSee(a.id)&&(cF.p==="all"||a.platformId===cF.p)).map(a=>'<option value="'+a.id+'" '+(cF.a===a.id?'selected':'')+'>'+esc(a.name)+'</option>').join('');}
 function vCredit(){
   const html=`<div class="topbar"><div class="t-left"><h2>🧾 挂账 / 应收</h2><p>微信批发客户取货未结账，可分次收款；未收合计 <b id="cu_unpaid" style="color:var(--amber)">—</b>（<span id="cu_count">0</span> 位客户）</p></div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="cu_q" placeholder="🔍 搜索客户 / 商品…" oninput="cuQ=this.value;renderCreditTbl()" value="${esc(cuQ)}" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;outline:none;min-width:180px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(creditCsv(),'挂账应收.csv')">⬇️ 导出</button></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="cu_p" onchange="cF.p=this.value;cF.a='all';rebuildCuA();renderCreditTbl()" style="padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px"><option value="all">全部平台</option>${myPlatforms().map(p=>'<option value="'+p.id+'" '+(cF.p===p.id?'selected':'')+'>'+p.em+' '+p.name+'</option>').join('')}</select>
+      <select id="cu_a" onchange="cF.a=this.value;renderCreditTbl()" style="padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px"><option value="all">全部账号</option>${DB.accounts.filter(a=>canSee(a.id)&&(cF.p==="all"||a.platformId===cF.p)).map(a=>'<option value="'+a.id+'" '+(cF.a===a.id?'selected':'')+'>'+esc(a.name)+'</option>').join('')}</select>
+      <input id="cu_q" placeholder="🔍 搜索客户 / 商品…" oninput="cuQ=this.value;renderCreditTbl()" value="${esc(cuQ)}" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;outline:none;min-width:180px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(creditCsv(),'挂账应收.csv')">⬇️ 导出</button></div></div>
   <div id="creditBody"></div>`;
   setTimeout(renderCreditTbl,0);
   return html;
 }
 function renderCreditTbl(){
   const el=document.getElementById("creditBody");if(!el)return;
-  const creditOrders=DB.orders.filter(o=>o.payMode==="credit"&&canSee(o.accountId));
+  const creditOrders=DB.orders.filter(o=>o.payMode==="credit"&&canSee(o.accountId)&&(cF.p==="all"||o.platformId===cF.p)&&(cF.a==="all"||o.accountId===cF.a));
   const q=cuQ.trim().toLowerCase();
   const open=creditOrders.filter(o=>isCredit(o)&&(!q||(o.creditCustomer||"").toLowerCase().includes(q)||orderName(o).toLowerCase().includes(q)));
   const groups={};
-  open.forEach(o=>{const k=o.creditCustomer;if(!groups[k])groups[k]={name:k,due:o.creditDue,orders:0,recv:0,total:0};groups[k].orders++;groups[k].total+=orderPaid(o);groups[k].recv+=(+o.creditPaid||0);});
+  open.forEach(o=>{const k=o.creditCustomer;if(!groups[k])groups[k]={name:k,due:o.creditDue,orders:0,recv:0,total:0};groups[k].orders++;groups[k].total+=orderPaid(o);groups[k].recv+=(+o.creditPaid||0);if(!groups[k].sellers)groups[k].sellers={};if(o.seller)groups[k].sellers[o.seller]=1;});
   const rows=Object.values(groups).map(g=>({...g,remain:g.total-g.recv})).sort((a,b)=>b.remain-a.remain);
   const totTotal=creditOrders.reduce((s,o)=>s+orderPaid(o),0);
   const totRecv=creditOrders.reduce((s,o)=>s+(+o.creditPaid||0),0);
@@ -4058,49 +4126,85 @@ function renderCreditTbl(){
     ${kpi("挂账客户",rows.length,"num","cy")}
   </div>
   <h3 class="sec"><span class="dot"></span>客户欠款</h3>
-  <div class="table-wrap"><table><thead><tr><th>客户</th><th>单数</th><th>应收</th><th>已收</th><th>未收</th><th>结账日</th><th>状态</th><th>操作</th></tr></thead><tbody>`;
-  h+=rows.length?rows.map(r=>`<tr><td style="font-weight:600">${esc(r.name)}</td><td>${r.orders}</td><td>${yuan(r.total)}</td><td style="color:var(--green)">${yuan(r.recv)}</td><td style="color:var(--red);font-weight:700">${yuan(r.remain)}</td><td style="color:var(--muted)">${esc(r.due||"—")}</td><td>${r.remain<=0?"<span class=\"badge green\">已结清</span>":"<span class=\"badge red\">未结</span>"}</td><td><div class="table-actions"><button class="btn btn-primary btn-sm" onclick="collectCredit('${esc(r.name)}')">💰 收款</button><button class="btn btn-ghost btn-sm" onclick="settleCredit('${esc(r.name)}')">✅ 结清</button><button class="btn btn-ghost btn-sm" onclick="viewCreditCus('${esc(r.name)}')">📋 明细</button></div></td></tr>`).join(""):`<tr><td colspan="8" style="text-align:center;color:var(--muted)">暂无未结挂账</td></tr>`;
+  <div class="table-wrap"><table><thead><tr><th>客户</th><th>销售</th><th>单数</th><th>应收</th><th>已收</th><th>未收</th><th>状态</th><th>操作</th></tr></thead><tbody>`;
+  h+=rows.length?rows.map(r=>`<tr><td style="font-weight:600">${esc(r.name)}</td><td style="color:var(--muted)">${esc(Object.keys(r.sellers||{}).join("/")||"—")}</td><td>${r.orders}</td><td>${yuan(r.total)}</td><td style="color:var(--green)">${yuan(r.recv)}</td><td style="color:var(--red);font-weight:700">${yuan(r.remain)}</td><td>${r.remain<=0?"<span class=\"badge green\">已结清</span>":"<span class=\"badge red\">未结</span>"}</td><td><div class="table-actions"><button class="btn btn-primary btn-sm" onclick="collectCredit('${esc(r.name)}')">💰 收款</button><button class="btn btn-ghost btn-sm" onclick="settleCredit('${esc(r.name)}')">✅ 结清</button><button class="btn btn-ghost btn-sm" onclick="viewCreditCus('${esc(r.name)}')">📋 明细</button></div></td></tr>`).join(""):`<tr><td colspan="8" style="text-align:center;color:var(--muted)">暂无未结挂账</td></tr>`;
   h+=`</tbody></table></div>
-  <h3 class="sec"><span class="dot"></span>挂账明细</h3>
-  <div class="table-wrap"><table><thead><tr><th>销售日期</th><th>客户</th><th>商品</th><th>应收</th><th>已收</th><th>未收</th><th>结账日</th><th>状态</th></tr></thead><tbody>`;
-  h+=creditOrders.filter(o=>!q||(o.creditCustomer||"").toLowerCase().includes(q)||orderName(o).toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date)).map(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);return `<tr><td>${esc(o.date)}</td><td style="font-weight:600">${esc(o.creditCustomer)}</td><td>${esc(orderName(o))}</td><td style="color:var(--amber)">${yuan(orderPaid(o))}</td><td style="color:var(--green)">${yuan(o.creditPaid||0)}</td><td style="color:${rem<=0?"var(--muted)":"var(--red)"};font-weight:700">${yuan(rem)}</td><td>${esc(o.creditDue||"—")}</td><td>${rem<=0?"<span class=\"badge green\">已结清</span>":"<span class=\"badge red\">未结</span>"}</td></tr>`;}).join("");
-  h+=`</tbody></table></div>`;
+  <h3 class="sec"><span class="dot"></span>挂账明细 <button class="btn btn-ghost btn-sm" style="margin-left:10px" onclick="var w=document.getElementById('cuDetailWrap');if(w)w.style.display=(w.style.display==='none'?'':'none');">展开 / 收起</button><button class="btn btn-ghost btn-sm" style="margin-left:6px;color:var(--red)" onclick="delCreditSel()">🗑️ 删除选中</button></h3>
+  <div id="cuDetailWrap" style="display:none"><div class="table-wrap"><table><thead><tr><th style="width:30px"><input type="checkbox" onchange="cuSelAll(this.checked)"></th><th>销售日期</th><th>客户</th><th>销售</th><th>商品</th><th>应收</th><th>已收</th><th>未收</th><th>状态</th><th>操作</th></tr></thead><tbody>`;
+  h+=creditOrders.filter(o=>!q||(o.creditCustomer||"").toLowerCase().includes(q)||orderName(o).toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date)).map(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);return `<tr><td><input class="cuChk" type="checkbox" value="${o.id}" ${cuSel[o.id]?"checked":""} onchange="toggleCuSel('${o.id}',this.checked)"></td><td>${esc(o.date)}</td><td style="font-weight:600">${esc(o.creditCustomer)}</td><td style="color:var(--muted)">${esc(o.seller||"—")}</td><td>${esc(orderName(o))}</td><td style="color:var(--amber)">${yuan(orderPaid(o))}</td><td style="color:var(--green)">${yuan(o.creditPaid||0)}</td><td style="color:${rem<=0?"var(--muted)":"var(--red)"};font-weight:700">${yuan(rem)}</td><td>${rem<=0?"<span class=\"badge green\">已结清</span>":"<span class=\"badge red\">未结</span>"}</td><td><button class="btn btn-ghost btn-sm" style="color:var(--red)" title="删除这条挂账" onclick="delCreditOrder('${o.id}')">🗑️</button></td></tr>`;}).join("");
+  h+=`</tbody></table></div></div>`;
   el.innerHTML=h;
 }
 function collectCredit(name){
   openModal(`<div class="modal-head"><h3>💰 收款（${esc(name)}）</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">
     <div class="field"><label class="req">本次收款金额(¥)</label><input id="cc_amt" type="number" step="0.01" placeholder="可分次收"></div>
     <div class="field"><label>收款日期</label><input id="cc_date" type="date"></div>
-    <div style="font-size:12px;color:var(--muted)">按结账日先后，从该客户最早挂账单依次抵扣；未收归零自动结清。</div>
+    <div style="font-size:12px;color:var(--muted)">按销售日期先后，从该客户最早挂账单依次抵扣；未收归零自动结清。</div>
     </div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveCollect('${esc(name)}')">确认收款</button></div>`);
   (()=>{const d=$("#cc_date");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);})();
 }
 function saveCollect(name){
   let amt=+$("#cc_amt").value||0;const dt=$("#cc_date").value||new Date().toISOString().slice(0,10);
   if(amt<=0){toast("请填写收款金额","err");return;}
-  const targets=DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)&&(orderPaid(o)-(+o.creditPaid||0))>0.001).sort((a,b)=>(a.creditDue||"").localeCompare(b.creditDue||""));
+  const targets=DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)&&(orderPaid(o)-(+o.creditPaid||0))>0.001).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
   let left=amt;
   targets.forEach(o=>{if(left<=0)return;const rem=orderPaid(o)-(+o.creditPaid||0);const take=Math.min(rem,left);o.creditPaid=(+o.creditPaid||0)+take;o.creditPayments=o.creditPayments||[];o.creditPayments.push({date:dt,amount:take});left-=take;});
   if(left>0)toast("金额大于未收，已按未收全额记录","warn");
   save();closeModal();render();toast("已收款 "+yuan(amt)+"（"+name+"）");
 }
 function settleCredit(name){if(!confirm(`确认把客户「${name}」剩余挂账全部结清？`))return;const today=new Date().toISOString().slice(0,10);DB.orders.forEach(o=>{if(o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)&&(orderPaid(o)-(+o.creditPaid||0))>0.001){const rem=orderPaid(o)-(+o.creditPaid||0);o.creditPaid=(+o.creditPaid||0)+rem;o.creditPayments=o.creditPayments||[];o.creditPayments.push({date:today,amount:rem});}});save();render();toast(`客户「${name}」已结清`);}
-function creditCsv(){const rows=[];DB.orders.filter(o=>o.payMode==="credit"&&canSee(o.accountId)).forEach(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);rows.push({销售日期:o.date,客户:o.creditCustomer,商品:orderName(o),应收:+orderPaid(o).toFixed(2),已收:+(o.creditPaid||0).toFixed(2),未收:+rem.toFixed(2),结账日:o.creditDue||"",状态:rem<=0?"已结":((o.creditPaid||0)>0?"部分结":"未结")});});return rows;}
+function creditCsv(){const rows=[];DB.orders.filter(o=>o.payMode==="credit"&&canSee(o.accountId)).forEach(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);rows.push({销售日期:o.date,客户:o.creditCustomer,商品:orderName(o),应收:+orderPaid(o).toFixed(2),已收:+(o.creditPaid||0).toFixed(2),未收:+rem.toFixed(2),状态:rem<=0?"已结":((o.creditPaid||0)>0?"部分结":"未结")});});return rows;}
 function viewCreditCus(name){
-  const orders=DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)).sort((a,b)=>b.date.localeCompare(a.date));
-  const total=orders.reduce((s,o)=>s+orderPaid(o),0),recv=orders.reduce((s,o)=>s+(+o.creditPaid||0),0);
-  openModal(`<div class="modal-head"><h3>🧾 ${esc(name)} · 挂账明细</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>
-    <div class="modal-body" style="max-height:72vh;overflow:auto">
-      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px;font-size:13px"><span>应收 <b style="color:var(--amber)">${yuan(total)}</b></span><span>已收 <b style="color:var(--green)">${yuan(recv)}</b></span><span>未收 <b style="color:var(--red)">${yuan(total-recv)}</b></span></div>
-      ${orders.map(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);return `<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(orderName(o))}</b><span style="font-size:12px;text-align:right;color:var(--muted)">${esc(o.date)}<br>结账日 ${esc(o.creditDue||"—")}</span></div>
-        <div style="display:flex;gap:12px;margin-top:6px;font-size:12.5px;flex-wrap:wrap"><span>应收 ${yuan(orderPaid(o))}</span><span>已收 <b style="color:var(--green)">${yuan(o.creditPaid||0)}</b></span><span>未收 <b style="color:${rem<=0?"var(--muted)":"var(--red)"}">${yuan(rem)}</b></span><span>${rem<=0?"<span class=\"badge green\">已结清</span>":"<span class=\"badge red\">未结</span>"}</span></div>
-        ${(o.creditPayments&&o.creditPayments.length)?`<div style="margin-top:6px;font-size:12px;color:var(--muted)">收款记录：${o.creditPayments.map(p=>`${esc(p.date||"")} ¥${yuan(p.amount)}`).join(" ｜ ")}</div>`:""}
-      </div>`;}).join("")}
-    </div>
-    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">关闭</button><button class="btn btn-primary" onclick="exportCsv(creditCusCsv('${esc(name)}'),'${esc(name)}-挂账.csv')">⬇️ 导出该客户挂账</button></div>`);
+  const all=DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
+  const today=new Date().toISOString().slice(0,10);
+  const _f=document.getElementById("cc_from"), _t=document.getElementById("cc_to");
+  const from=(_f&&_f.value)||(all[0]?all[0].date:today);
+  const to=(_t&&_t.value)||today;
+  const orders=all.filter(function(o){var d=String(o.date||"");return d>=from&&d<=to;});
+  const tAll=all.reduce((s,o)=>s+orderPaid(o),0), rAll=all.reduce((s,o)=>s+(+o.creditPaid||0),0);
+  const tSum=orders.reduce((s,o)=>s+orderPaid(o),0), rSum=orders.reduce((s,o)=>s+(+o.creditPaid||0),0);
+  const N=esc(name);
+  openModal('<div class="modal-head"><h3>📄 '+N+' · 挂账明细 / 账单</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
+   +'<div class="modal-body" style="max-height:74vh;overflow:auto">'
+   +'<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:13px"><span>累计应收 <b style="color:var(--amber)">'+yuan(tAll)+'</b></span><span>累计已收 <b style="color:var(--green)">'+yuan(rAll)+'</b></span><span>累计未收 <b style="color:var(--red)">'+yuan(tAll-rAll)+'</b></span></div>'
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">'
+   +'<div><label style="font-size:12px;color:var(--muted);display:block">账单开始</label><input id="cc_from" type="date" value="'+from+'" onchange="viewCreditCus(\''+N+'\')" style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text)"></div>'
+   +'<div><label style="font-size:12px;color:var(--muted);display:block">账单结束</label><input id="cc_to" type="date" value="'+to+'" onchange="viewCreditCus(\''+N+'\')" style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text)"></div>'
+   +'<button class="btn btn-ghost btn-sm" onclick="var a=document.getElementById(\'cc_from\'),b=document.getElementById(\'cc_to\');a.value=\''+(all[0]?all[0].date:today)+'\';b.value=\''+today+'\';viewCreditCus(\''+N+'\')">全部期间</button>'
+   +'<button class="btn btn-ghost btn-sm" onclick="exportCsv(creditBillCsv(\''+N+'\',\''+from+'\',\''+to+'\'),\''+N+'-账单.csv\')">⬇️ 导出CSV</button>'
+   +'<button class="btn btn-primary btn-sm" onclick="printCreditBill(\''+N+'\',\''+from+'\',\''+to+'\')">🖨️ 打印/存PDF</button>'
+   +'</div>'
+   +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">本期（'+from+' ~ '+to+'）：应收 '+yuan(tSum)+' · 已收 '+yuan(rSum)+' · 未收 '+yuan(tSum-rSum)+'</div>'
+   +'<h4 style="margin:8px 0 6px">本期明细（'+orders.length+' 笔）</h4>'
+   +'<div class="table-wrap" style="padding:0"><table class="tbl-nowrap"><thead><tr><th>销售日期</th><th>商品</th><th>应收</th><th>已收</th><th>未收</th><th>状态</th></tr></thead><tbody>'
+   + (orders.length?orders.map(function(o){var rem=orderPaid(o)-(+o.creditPaid||0);var pays=(o.creditPayments&&o.creditPayments.length)?(' <span style="color:var(--muted);font-size:11px">('+o.creditPayments.map(function(p){return String(p.date||"")+" ¥"+(+p.amount||0).toFixed(2);}).join(" / ")+')</span>'):'';return '<tr><td>'+esc(o.date)+'</td><td>'+esc(orderName(o))+pays+'</td><td style="color:var(--amber)">'+yuan(orderPaid(o))+'</td><td style="color:var(--green)">'+yuan(o.creditPaid||0)+'</td><td style="color:'+(rem<=0?'var(--muted)':'var(--red)')+';font-weight:700">'+yuan(rem)+'</td><td>'+(rem<=0?'<span class="badge green">已结清</span>':((o.creditPaid||0)>0?'<span class="badge" style="background:#fde68a;color:#92400e">部分结</span>':'<span class="badge red">未结</span>'))+'</td></tr>';}).join(""):'<tr><td colspan="6" style="text-align:center;color:var(--muted)">该期间无挂账单</td></tr>')
+   +'</tbody></table></div>'
+   +'<div style="margin-top:10px;font-size:12.5px;color:var(--muted)">说明：把"账单开始"设到最早、结束设到今天＝<b>总账单</b>；只选某段时间＝<b>期间账单</b>。收到部分款就用客户行的「💰 收款」登记，未收会自动减少、并记录在每笔后面。</div>'
+   +'</div>'
+   +'<div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">关闭</button></div>');
 }
-function creditCusCsv(name){const rows=[];DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)).forEach(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);rows.push({销售日期:o.date,客户:o.creditCustomer,商品:orderName(o),应收:+orderPaid(o).toFixed(2),已收:+(o.creditPaid||0).toFixed(2),未收:+rem.toFixed(2),结账日:o.creditDue||"",收款记录:(o.creditPayments||[]).map(p=>`${p.date||""}¥${(+p.amount).toFixed(2)}`).join(" | "),状态:rem<=0?"已结":((o.creditPaid||0)>0?"部分结":"未结")});});return rows;}
+function creditBillCsv(name,from,to){
+  const rows=[];
+  DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)&&String(o.date||"")>=from&&String(o.date||"")<=to).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))).forEach(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);rows.push({"销售日期":o.date,"客户":name,"商品":orderName(o),"应收":+orderPaid(o).toFixed(2),"已收":+(o.creditPaid||0).toFixed(2),"未收":+rem.toFixed(2),"收款记录":(o.creditPayments||[]).map(p=>String(p.date||"")+"¥"+(+p.amount||0).toFixed(2)).join(" | "),"状态":rem<=0?"已结":((o.creditPaid||0)>0?"部分结":"未结")});});
+  return rows;
+}
+function printCreditBill(name,from,to){
+  const orders=DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)&&String(o.date||"")>=from&&String(o.date||"")<=to).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
+  const tSum=orders.reduce((s,o)=>s+orderPaid(o),0), rSum=orders.reduce((s,o)=>s+(+o.creditPaid||0),0);
+  var h='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(name)+' 账单</title><style>body{font-family:-apple-system,"Microsoft YaHei",sans-serif;padding:26px;color:#111}h2{margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #bbb;padding:8px 10px;font-size:13px;text-align:center}th{background:#f3f4f6}.sum{margin-top:14px;font-size:14px}@media print{.noprint{display:none}}</style></head><body>';
+  h+='<h2>'+esc(name)+' · 挂账账单</h2><div style="color:#666;font-size:12px">期间：'+from+' ~ '+to+' ｜ 生成：'+new Date().toLocaleString("zh-CN")+'</div>';
+  h+='<table><thead><tr><th>销售日期</th><th>商品</th><th>数量</th><th>应收</th><th>已收</th><th>未收</th></tr></thead><tbody>';
+  h+=orders.length?orders.map(function(o){var rem=orderPaid(o)-(+o.creditPaid||0);return '<tr><td>'+esc(o.date)+'</td><td>'+esc(orderName(o))+'</td><td>'+(o.qty||0)+'</td><td>'+yuan(orderPaid(o))+'</td><td>'+yuan(o.creditPaid||0)+'</td><td>'+yuan(rem)+'</td></tr>';}).join(""):'<tr><td colspan="6">该期间无记录</td></tr>';
+  h+='</tbody></table>';
+  h+='<div class="sum">本期应收：<b>'+yuan(tSum)+'</b>　本期已收：<b>'+yuan(rSum)+'</b>　本期未收：<b>'+yuan(tSum-rSum)+'</b></div>';
+  h+='<div class="noprint" style="margin-top:20px"><button onclick="window.print()" style="padding:10px 18px;font-size:15px;cursor:pointer">🖨️ 打印 / 存为 PDF</button></div>';
+  h+='</body></html>';
+  var w=null; try{ w=window.open('','_blank'); }catch(e){}
+  if(w&&w.document){ w.document.write(h); w.document.close(); }
+  else { try{ var f=document.createElement('iframe'); f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f); f.contentDocument.write(h); f.contentDocument.close(); setTimeout(function(){try{f.contentWindow.print();}catch(e){}},400); }catch(e){ toast('无法打开打印窗口','err'); } }
+}
+
+function creditCusCsv(name){const rows=[];DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)).forEach(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);rows.push({销售日期:o.date,客户:o.creditCustomer,商品:orderName(o),应收:+orderPaid(o).toFixed(2),已收:+(o.creditPaid||0).toFixed(2),未收:+rem.toFixed(2),收款记录:(o.creditPayments||[]).map(p=>`${p.date||""}¥${(+p.amount).toFixed(2)}`).join(" | "),状态:rem<=0?"已结":((o.creditPaid||0)>0?"部分结":"未结")});});return rows;}
 
 /* ================= ROUTER ================= */
 function renderNav(){
@@ -4288,7 +4392,7 @@ function delUser(id){if(!confirm("确定删除该用户？"))return;if(DB.users.
 function logout(){CUR=null;sessionStorage.removeItem("honghuU");location.reload();}
 
 /* boot */
-try{ if('serviceWorker' in navigator){ if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){ navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister();});}); } else { navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).catch(function(){}); } } }catch(e){}
+try{ if('serviceWorker' in navigator){ if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){ navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){try{r.unregister();}catch(e){}});}); } else { var _reg=null,_rl=false; navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(function(reg){ _reg=reg; try{reg.update();}catch(e){} reg.addEventListener('updatefound',function(){ var nw=reg.installing; if(!nw)return; nw.addEventListener('statechange',function(){ if(nw.state==='installed'){ try{nw.postMessage('SKIP_WAITING');}catch(e){} if(navigator.serviceWorker.controller){ try{location.reload();}catch(e){} } } }); }); }).catch(function(){}); navigator.serviceWorker.addEventListener('controllerchange',function(){ if(_rl)return; _rl=true; try{location.reload();}catch(e){} }); setInterval(function(){ try{if(_reg)_reg.update();}catch(e){} },120000); document.addEventListener('visibilitychange',function(){ if(!document.hidden){ try{if(_reg)_reg.update();}catch(e){} } }); } } }catch(e){}
 boot();
 
 </script>
