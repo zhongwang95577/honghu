@@ -2693,7 +2693,7 @@ const orderPaid=o=>orderGross(o)+buyerShip(o);            // 买家实付 = 商�
 const orderRefund=o=>+((o.refund&&o.refund.amount)||0)||0;
 const effQty=o=>isRefund(o)?0:(o.qty||0);
 const orderNet=o=>orderPaid(o)-orderRefund(o)-orderFees(o);
-const orderCost=o=>{if(o.isTemp)return (+o.tempCost||0)*effQty(o);const p=DB.products.find(x=>x.id===o.productId);return p?p.cost*effQty(o):0;};
+const orderCost=o=>{var _f=(o.packFactor||1);if(o.isTemp)return (+o.tempCost||0)*effQty(o)*_f;const p=DB.products.find(x=>x.id===o.productId);return p?(p.cost||0)*effQty(o)*_f:0;};
 const orderName=o=>o.productName?o.productName:(pname(o.productId));
 const orderNo=o=>{const d=(o.date||"").replace(/-/g,"");let seq=o.seq;if(!seq){const same=DB.orders.filter(x=>x.date===o.date).sort((a,b)=>(a.id>b.id?1:-1));seq=(same.findIndex(x=>x.id===o.id)+1)||1;}return d+"-"+String(seq).padStart(3,"0");};
 const isCredit=o=>!!(o&&o.payMode==="credit"&&o.creditCustomer&&((orderPaid(o)-(+o.creditPaid||0))>0.001));
@@ -2723,7 +2723,7 @@ function toast(msg,type="ok"){
   $("#toasts").appendChild(t);
   setTimeout(()=>{t.classList.add("out");setTimeout(()=>t.remove(),420);},2600);
 }
-function openModal(html){$("#modal").innerHTML=html;$("#overlay").classList.add("show");}
+function openModal(html){$("#modal").innerHTML=html;$("#overlay").classList.add("show");try{if(document.getElementById("f_unit")&&typeof onSetUnit==="function")onSetUnit();}catch(e){}}
 function closeModal(){$("#overlay").classList.remove("show");$("#modal").innerHTML="";}
 $("#overlay").addEventListener("click",e=>{/* 点遮罩不关闭，避免误触丢失输入 */});
 function softRefresh(){ try{ closeModal(); if(typeof cloudPoll==="function")cloudPoll(); if(typeof pollLocalServer==="function")pollLocalServer(); render(); if(typeof animate==="function")animate(); toast("已刷新（若仍卡，按 F5 重新载入）"); }catch(e){ try{ location.reload(); }catch(_){} } }
@@ -3057,12 +3057,31 @@ function rmCat(i){DB.cats.splice(i,1);save();manageCats();}
 function addBrand(){const v=$("#nb").value.trim();if(!v)return;if(!DB.brands.includes(v))DB.brands.push(v);save();manageCats();}
 function rmBrand(i){DB.brands.splice(i,1);save();manageCats();}
 let _editP=null;
+function fillBasePrice(){try{var a=document.getElementById("f_bcost"),b=document.getElementById("f_bprice");var ca=document.getElementById("f_cost"),cb=document.getElementById("f_price");if(a&&ca&&!a.value)a.value=ca.value;if(b&&cb&&!b.value)b.value=cb.value;}catch(e){}}
 function syncProdStock(){try{var s=0;document.querySelectorAll("#varRows .varStock").forEach(function(i){s+=(+i.value||0)});var f=document.getElementById("f_stock");if(f)f.value=s;}catch(e){}}
+function syncPairQty(){try{var f=+((document.getElementById("f_pairFactor")||{}).value||2)||2;var pq=document.getElementById("f_pairQty"),oq=document.getElementById("f_oneQty");if(pq&&oq&&pq.value!=="")oq.value=(+pq.value*f);}catch(e){}}
+function varQtySync(el){try{var r=(el&&el.closest)?el.closest(".varRow"):null;if(!r)return;var f=+((document.getElementById("f_pairFactor")||{}).value||2)||2;var sq=r.querySelector(".varSpq");if(sq&&el.value!=="")sq.value=(+el.value*f);}catch(e){}}
+function syncOnePrice(){
+  try{
+    var f=+((document.getElementById("f_pairFactor")||{}).value||2)||2;
+    var pc=document.getElementById("f_pairCost"),pp=document.getElementById("f_pairPrice");
+    var oc=document.getElementById("f_oneCost"),op=document.getElementById("f_onePrice");
+    if(pc&&oc&&pc.value!=="") oc.value=(+((+pc.value)/f).toFixed(2));
+    if(pp&&op&&pp.value!=="") op.value=(+((+pp.value)/f).toFixed(2));
+    if(typeof syncPairQty==="function")syncPairQty();
+  }catch(e){}
+}
+function onSetUnit(){try{
+  var u=(document.getElementById("f_unit")||{}).value||"";
+  var isSet=(["对","双","套","副","组"].indexOf(u)>=0);
+  var pb=document.getElementById("pairBox"); if(pb)pb.style.display=isSet?"":"none";
+  var bb=document.getElementById("basePriceBox"); if(bb)bb.style.display=isSet?"none":"";
+}catch(e){}}
 function toggleMulti(on){try{var v=document.getElementById("varRows");var sec=v?v.closest(".field"):null;if(sec)sec.style.display=on?"":"none";}catch(e){}}
-function varRowsHtml(p){var vs=(p&&p.variants)||[];return vs.map(function(v){return '<div class="row varRow" style="margin-bottom:6px"><input class="varName" placeholder="规格名(黄光/白光)" value="'+(v.name||'')+'"><input class="varCode" placeholder="该规格条码" value="'+(v.barcode||'')+'"><input class="varStock" type="number" placeholder="库存" value="'+(v.stock==null?'':v.stock)+'" oninput="syncProdStock()"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
-function addVarRow(){var b=document.getElementById("varRows");if(!b)return;var d=document.createElement("div");d.className="row varRow";d.style.marginBottom="6px";d.innerHTML='<input class="varName" placeholder="规格名(黄光/白光)"><input class="varCode" placeholder="该规格条码"><input class="varStock" type="number" placeholder="库存"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span>';b.appendChild(d);}
-function unitRowsHtml(p){var us=(p&&p.units)||[];return us.map(function(u){return '<div class="row unitRow" style="margin-bottom:6px"><input class="unitName" placeholder="单位名(对/箱)" value="'+(u.name||'')+'"><input class="unitFactor" type="number" placeholder="1单位=多少个基础单位" value="'+(u.factor||'')+'"><input class="unitPrice" type="number" placeholder="该单位售价" value="'+(u.price==null?'':u.price)+'"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
-function addUnitRow(){var b=document.getElementById("unitRows");if(!b)return;var d=document.createElement("div");d.className="row unitRow";d.style.marginBottom="6px";d.innerHTML='<input class="unitName" placeholder="单位名(对/箱)"><input class="unitFactor" type="number" placeholder="1单位=多少个基础单位"><input class="unitPrice" type="number" placeholder="该单位售价"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span>';b.appendChild(d);}
+function varRowsHtml(p){var vs=(p&&p.variants)||[];return vs.map(function(v){return '<div class="row varRow" style="margin-bottom:6px"><input class="varName" placeholder="规格名(黄光/白光)" value="'+(v.name||'')+'"><input class="varCode" placeholder="该规格条码" value="'+(v.barcode||'')+'"><input class="varStock" type="number" placeholder="库存" value="'+(v.stock==null?'':v.stock)+'" oninput="syncProdStock()"><input class="varPq" type="number" placeholder="成对数量" value="'+(v.pq==null?'':v.pq)+'" oninput="varQtySync(this)"><input class="varSpq" type="number" placeholder="单个数量" value="'+(v.spq==null?'':v.spq)+'"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
+function addVarRow(){var b=document.getElementById("varRows");if(!b)return;var d=document.createElement("div");d.className="row varRow";d.style.marginBottom="6px";d.innerHTML='<input class="varName" placeholder="规格名(黄光/白光)"><input class="varCode" placeholder="该规格条码"><input class="varStock" type="number" placeholder="库存"><input class="varPq" type="number" placeholder="成对数量" oninput="varQtySync(this)"><input class="varSpq" type="number" placeholder="单个数量"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span>';b.appendChild(d);}
+function unitRowsHtml(p){var us=(p&&p.units)||[];return us.map(function(u){return '<div class="row unitRow" style="margin-bottom:6px"><input class="unitName" placeholder="单位名(对/箱)" value="'+(u.name||'')+'"><input class="unitFactor" type="number" placeholder="1单位=多少个基础单位" value="'+(u.factor||'')+'"><input class="unitPrice" type="number" placeholder="该单位售价" value="'+(u.price==null?'':u.price)+'"><input class="unitCost" type="number" placeholder="该单位成本" value="'+(u.cost==null?'':u.cost)+'"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
+function addUnitRow(){var b=document.getElementById("unitRows");if(!b)return;var d=document.createElement("div");d.className="row unitRow";d.style.marginBottom="6px";d.innerHTML='<input class="unitName" placeholder="单位名(对/箱)"><input class="unitFactor" type="number" placeholder="1单位=多少个基础单位"><input class="unitPrice" type="number" placeholder="该单位售价"><input class="unitCost" type="number" placeholder="该单位成本"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span>';b.appendChild(d);}
 function openProductForm(id){
   if(id){const p=DB.products.find(x=>x.id===id);_prodImg=p.img||"";_editP=p;
     openModal(`<div class="modal-head"><h3>✏️ 编辑商品</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>
@@ -3071,14 +3090,14 @@ function openProductForm(id){
       <div class="field"><div class="row">
         <div><label class="req">SKU 编码</label><input id="f_sku" value="${esc(p.sku)}"></div>
         <div><label>条形码</label><input id="f_barcode" value="${esc(p.barcode||"")}" placeholder="扫码/手输"></div>
-        <div><label>单位</label><input id="f_unit" value="${esc(p.unit||"个")}" placeholder="个/对/套/台"></div>
+        <div><label>单位</label><select id="f_unit" onchange="onSetUnit()" style="min-width:90px">${(function(){var list=["个","对","只","双","套","副","组","件","盒","箱","包","袋","瓶","桶","罐","条","支","把","张","片","块","台","部","米","公斤","斤","升"];var cur=(p&&p.unit)||"个";var html=list.map(function(u){return '<option value="'+u+'"'+(cur===u?' selected':'')+'>'+u+'</option>';}).join("");if(list.indexOf(cur)<0)html='<option value="'+cur+'" selected>'+cur+'</option>'+html;return html;})()}</select></div>
         <div><label>品牌（自定义）</label>${brandSel(p.brand||"")}</div>
       </div></div>
       <div class="field"><div class="row">
         <div><label>分类（自定义类目）</label><input id="f_cat" list="catList" value="${esc(p.category)}" placeholder="外观件/灯光/性能…">${catDl()}</div>
         <div><label>存放位置</label><input id="f_loc" value="${esc(p.location)}" placeholder="库房A区 / B区"></div>
       </div></div>
-      <div class="field"><div class="row">
+      <div class="field" style="display:none"><div class="row">
         <div><label class="req">成本价</label><input id="f_cost" type="number" step="0.01" value="${p.cost}"></div>
         <div><label class="req">销售价</label><input id="f_price" type="number" step="0.01" value="${p.price}"></div>
       </div></div>
@@ -3089,7 +3108,14 @@ function openProductForm(id){
       <div class="field"><label>商品图片（可选）</label><div style="display:flex;gap:12px;align-items:center"><img id="f_imgPrev" src="${_prodImg}" style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--border);${_prodImg?'':'display:none'}"><div><input type="file" id="f_imgFile" accept="image/*" onchange="pickProdImg(this)" style="display:none"><button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('f_imgFile').click()">📷 选择图片</button> <button class="btn btn-ghost btn-sm" type="button" onclick="clearProdImg()">清除</button></div></div></div>
       <div class="field"><label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="f_multi" checked onchange="toggleMulti(this.checked)"> 多规格售卖（同款不同光色/条码，分别记库存；不勾＝只按下面的基础设置）</label></div>
       <div class="field"><label>多规格/多码（同款不同光色，价格相同、条码不同）</label><div id="varRows">${varRowsHtml(_editP)}</div><button type="button" class="btn btn-ghost btn-sm" onclick="addVarRow()">➕ 加规格/条码</button></div>
-      <div class="field"><label>包装单位（整箱/拆零用；库存按基础单位计）</label><div class="hint">基础单位：<b>${(_editP&&_editP.unit)||"个"}</b>（换算=1）</div><div id="unitRows">${unitRowsHtml(_editP)}</div><button type="button" class="btn btn-ghost btn-sm" onclick="addUnitRow()">➕ 加包装单位</button></div>
+      <div class="field" id="basePriceBox"><div class="row"><div><label>成本价(¥)</label><input id="f_bcost" type="number" step="0.01" placeholder="单只/基础单位成本" value="${p.cost==null?'':p.cost}"></div><div><label>售价(¥)</label><input id="f_bprice" type="number" step="0.01" placeholder="单只/基础单位售价" value="${p.price==null?'':p.price}"></div></div></div>
+      <div class="field" id="pairBox" style="display:none"><label>成对 / 单个 成本与售价（单位选 对/双/套/副/组 时填写）</label>
+        <div class="row"><div><label>成对成本¥</label><input id="f_pairCost" type="number" step="0.01" placeholder="一套/一对的成本" oninput="syncOnePrice()" value="${p.pairCost==null?'':p.pairCost}"></div><div><label>成对售价¥</label><input id="f_pairPrice" type="number" step="0.01" placeholder="一套/一对的售价" oninput="syncOnePrice()" value="${p.pairPrice==null?'':p.pairPrice}"></div></div>
+        <div class="row" style="margin-top:6px"><div><label>单个成本¥</label><input id="f_oneCost" type="number" step="0.01" placeholder="单只的成本" value="${p.oneCost==null?'':p.oneCost}"></div><div><label>单个售价¥</label><input id="f_onePrice" type="number" step="0.01" placeholder="单只的售价" value="${p.onePrice==null?'':p.onePrice}"></div></div>
+        <div class="row" style="margin-top:6px"><div><label>1对/套 = 多少只</label><input id="f_pairFactor" type="number" step="1" value="${p.pairFactor||2}" placeholder="如 1对=2只" oninput="syncOnePrice()"></div><div><label>单只单位名</label><input id="f_oneUnit" value="${esc(p.oneUnit||"单只")}" placeholder="如 单只/个"></div></div>
+        <div class="row" style="margin-top:6px"><div><label>成对数量</label><input id="f_pairQty" type="number" step="1" placeholder="几对" oninput="syncPairQty()" value="${p.pairQty==null?'':p.pairQty}"></div><div><label>单个数量（自动）</label><input id="f_oneQty" readonly placeholder="自动算出" value="${p.oneQty==null?'':p.oneQty}"></div></div>
+      </div>
+      <div class="field" style="display:none"><label>包装单位（整箱/拆零用；库存按基础单位计）</label><div class="hint">基础单位：<b>${(_editP&&_editP.unit)||"个"}</b>（换算=1）</div><div id="unitRows">${unitRowsHtml(_editP)}</div><button type="button" class="btn btn-ghost btn-sm" onclick="addUnitRow()">➕ 加包装单位</button></div>
       <div class="field" style="font-size:12px;color:var(--muted)">💡 品牌/分类可直接填新值，保存后自动加入可选；也可到库存页“🏷️ 类目/品牌”统一管理。</div>
       </div>
       <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveProduct('${id}')">保存修改</button></div>`);
@@ -3128,9 +3154,9 @@ function saveProduct(id){
   if(!name){toast("请填写商品名称","err");return;}
   const cat=$("#f_cat").value.trim();
   const brand=brandValue();
-  const obj={name,sku:$("#f_sku").value.trim(),barcode:($("#f_barcode")?$("#f_barcode").value.trim():""),unit:($("#f_unit").value.trim()||"个"),category:cat,brand,img:_prodImg||"",variants:(function(){var a=[];document.querySelectorAll("#varRows .varRow").forEach(function(r){var n=r.querySelector(".varName").value.trim();var c2=r.querySelector(".varCode").value.trim();var st=r.querySelector(".varStock")?(+r.querySelector(".varStock").value||0):0;if(n||c2)a.push({name:n,barcode:c2,stock:st});});return a;})(),units:(function(){var a=[];document.querySelectorAll("#unitRows .unitRow").forEach(function(r){var n=r.querySelector(".unitName").value.trim();var f=+r.querySelector(".unitFactor").value||0;var pr=r.querySelector(".unitPrice")?(+r.querySelector(".unitPrice").value||0):0;if(n&&f)a.push({name:n,factor:f,price:pr});});return a;})(),
-    cost:+$("#f_cost").value||0,price:+$("#f_price").value||0,
-    stock:+$("#f_stock").value||0,minStock:+$("#f_min").value||0,location:$("#f_loc").value.trim()};
+  const obj={name,sku:$("#f_sku").value.trim(),barcode:($("#f_barcode")?$("#f_barcode").value.trim():""),unit:($("#f_unit").value.trim()||"个"),category:cat,brand,img:_prodImg||"",variants:(function(){var a=[];document.querySelectorAll("#varRows .varRow").forEach(function(r){var n=r.querySelector(".varName").value.trim();var c2=r.querySelector(".varCode").value.trim();var st=r.querySelector(".varStock")?(+r.querySelector(".varStock").value||0):0;var pq=r.querySelector(".varPq")?(+r.querySelector(".varPq").value||0):0;var spq=r.querySelector(".varSpq")?(+r.querySelector(".varSpq").value||0):0;if(n||c2)a.push({name:n,barcode:c2,stock:st,pq:pq,spq:spq});});return a;})(),units:(function(){var a=[];document.querySelectorAll("#unitRows .unitRow").forEach(function(r){var n=r.querySelector(".unitName").value.trim();var f=+r.querySelector(".unitFactor").value||0;var pr=r.querySelector(".unitPrice")?(+r.querySelector(".unitPrice").value||0):0;var co=r.querySelector(".unitCost")?(+r.querySelector(".unitCost").value||0):0;if(n&&f)a.push({name:n,factor:f,price:pr,cost:co});});return a;})(),
+    cost:+((document.getElementById("f_bcost")||{}).value||$("#f_cost").value)||0,price:+((document.getElementById("f_bprice")||{}).value||$("#f_price").value)||0,
+    stock:+$("#f_stock").value||0,minStock:+$("#f_min").value||0,location:$("#f_loc").value.trim(),pairCost:+((document.getElementById("f_pairCost")||{}).value||0),pairPrice:+((document.getElementById("f_pairPrice")||{}).value||0),oneCost:+((document.getElementById("f_oneCost")||{}).value||0),onePrice:+((document.getElementById("f_onePrice")||{}).value||0),pairFactor:+((document.getElementById("f_pairFactor")||{}).value||2),oneUnit:((document.getElementById("f_oneUnit")||{}).value||"单只"),pairQty:+((document.getElementById("f_pairQty")||{}).value||0),oneQty:+((document.getElementById("f_oneQty")||{}).value||0)};
   if(obj.variants&&obj.variants.length){var _vs=0;obj.variants.forEach(function(v){_vs+=(+v.stock||0)});obj.stock=_vs;}
   if(cat&&!DB.cats.includes(cat))DB.cats.push(cat);
   if(brand&&!DB.brands.includes(brand))DB.brands.push(brand);
@@ -3632,7 +3658,7 @@ function syncCreditCus(force){
 }
 var _oi=[];
 function oiFind(it){return DB.products.find(function(x){return x.id===it.pid;});}
-function oiFactor(it){var p=oiFind(it);if(!p||!p.units||!it.unit)return 1;var u=p.units.find(function(v){return v.name===it.unit;});return u?(+u.factor||1):1;}
+function oiFactor(it){var p=oiFind(it);if(!p||!it.unit)return 1;if(p.unit&&it.unit===p.unit)return +(p.pairFactor||2);if(p.oneUnit&&it.unit===p.oneUnit)return 1;if(p.units){var u=p.units.find(function(v){return v.name===it.unit;});if(u)return (+u.factor||1);}return 1;}
 function oiAmt(it){return (+it.qty||0)*oiFactor(it)*(+it.price||0);}
 function oiAdd(){_oi.push({pid:"",name:"",cost:"",qty:1,unit:"",price:""});oiRender();}
 function oiMode(){var r=document.querySelector("input[name=oiType]:checked");return r?r.value:"inv";}
@@ -3646,7 +3672,19 @@ function oiPick(i,val){
   oiRender();
   try{var sel=document.querySelectorAll("#oiBody tr")[i];if(sel){var s=sel.querySelector("input[type=number]");if(s)s.focus();}}catch(e){}
 }
-function oiPickUnit(i,u){if(!_oi[i])return;_oi[i].unit=u;oiRender();}
+function oiPickUnit(i,u){
+  if(!_oi[i])return; _oi[i].unit=u;
+  try{
+    var p=oiFind(_oi[i]);
+    if(p&&u&&(u===p.unit)&&p.pairPrice!=null&&p.pairPrice!==""){ _oi[i].price=p.pairPrice; try{toast("已带出「"+u+"」售价 ¥"+p.pairPrice);}catch(e){} }
+    else if(p&&u&&p.units){
+      var uu=p.units.find(function(x){return x.name===u;});
+      if(uu&&uu.price!=null&&uu.price!=="") { _oi[i].price=uu.price; try{toast("已带出「"+u+"」售价 ¥"+uu.price);}catch(e){} }
+      else if(p.oneUnit&&u===p.oneUnit&&p.onePrice!=null&&p.onePrice!==""){ _oi[i].price=p.onePrice; try{toast("已带出单只售价 ¥"+p.onePrice);}catch(e){} }
+    }
+  }catch(e){}
+  oiRender();
+}
 function oiRecalc(){var t=0;_oi.forEach(function(it,i){var a=oiAmt(it);t+=a;var c=document.getElementById("oiAmt"+i);if(c)c.textContent=yuan(a);});var e=document.getElementById("oiTotal");if(e)e.textContent=yuan(t);return t;}
 function oiRender(){
   var b=document.getElementById("oiBody");if(!b)return;
@@ -3663,7 +3701,7 @@ function oiRender(){
     }
     var unitCell;
     if(temp){ unitCell='<input placeholder="个" value="'+esc(it.unit||"")+'" oninput="oiSet('+i+',\'unit\',this.value)">'; }
-    else{ var uopts=''; if(p){ uopts+='<option value="">'+esc(p.unit||"个")+'</option>'; (p.units||[]).forEach(function(u){uopts+='<option value="'+esc(u.name)+'" '+(it.unit===u.name?'selected':'')+'>'+esc(u.name)+'('+u.factor+')</option>';}); } unitCell=p?('<select onchange="oiPickUnit('+i+',this.value)">'+uopts+'</select>'):'<span style="color:var(--muted)">—</span>'; }
+    else{ var uopts=''; if(p){ var _base=p.unit||'个'; uopts+='<option value="">'+esc(_base)+'</option>'; (p.units||[]).forEach(function(u){uopts+='<option value="'+esc(u.name)+'" '+(it.unit===u.name?'selected':'')+'>'+esc(u.name)+'('+u.factor+')</option>';}); if((p.pairPrice||p.pairCost)&&_base!==(p.oneUnit||'单只')){ uopts+='<option value="'+esc(_base)+'" '+(it.unit===_base?'selected':'')+'>'+esc(_base)+'('+(p.pairFactor||2)+')</option>'; uopts+='<option value="'+(p.oneUnit||'单只')+'" '+(it.unit===(p.oneUnit||'单只')?'selected':'')+'>'+(p.oneUnit||'单只')+'(1)</option>'; } } unitCell=p?('<select onchange="oiPickUnit('+i+',this.value)">'+uopts+'</select>'):'<span style="color:var(--muted)">—</span>'; }
     var h='<tr><td>'+(i+1)+'</td>';
     h+='<td>'+cell1+'</td>';
     h+='<td><input type="number" min="1" value="'+(it.qty||1)+'" style="width:64px" oninput="oiSet('+i+',\'qty\',this.value)"></td>';
@@ -3717,7 +3755,8 @@ function saveOrderNew(printAfter){
         payMode:pm,creditCustomer:(pm==="credit"?ccn:""),creditDue:"",creditPaid:0,creditPayments:[],
         buyer:buy,contact:contact,note:note,addr:addr,deliverDate:deliver,planDue:plandue,date:date,status:"待发货",gid:gid,maker:((document.getElementById("f_maker")&&document.getElementById("f_maker").value.trim())||"")};
       obj.seller=(CUR&&CUR.username)?CUR.username:"";
-      if(!_tp)stockAdj(p,obj.variantName,-effQty(obj));
+      obj.packFactor=(_tp?1:oiFactor(it));
+      if(!_tp)stockAdj(p,obj.variantName,-(effQty(obj)*(obj.packFactor||1)));
       obj.seq=DB.orders.filter(function(x){return x.date===obj.date;}).length+1;
       var _nid=pid();if(!firstId)firstId=_nid;DB.orders.push(Object.assign({id:_nid},obj));
       if(_tp&&obj.productName){
