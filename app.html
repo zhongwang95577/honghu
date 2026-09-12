@@ -3193,18 +3193,21 @@ function renderOrderTbl(){
   var _total=rows.length;
   if(rows.length>oLimit)rows=rows.slice(0,oLimit);
   if(window.innerWidth<760){
-    el.innerHTML=rows.map(function(o){
-      var fees=orderFees(o),net=orderNet(o),profit=net-orderCost(o),rf=o.refund;
+    el.innerHTML=(function(){var _g={},_ord=[];rows.forEach(function(o){var k=o.gid||("_"+o.id);if(!_g[k]){_g[k]=[];_ord.push(k);}_g[k].push(o);});
+    return _ord.map(function(k){var arr=_g[k],o=arr[0];
+      var qtyAll=0;arr.forEach(function(x){qtyAll+=effQty(x);});
+      var fees=0,net=0,cost=0,rf=null;arr.forEach(function(x){fees+=orderFees(x);net+=orderNet(x);cost+=orderCost(x);if(x.refund&&+x.refund.amount>0)rf=x.refund;});
+      var profit=net-cost;var names=arr.map(function(x){return orderName(x);});
       var h='<div class="ocard">';
       h+='<div style="display:flex;align-items:center;gap:8px">';
       h+='<input type="checkbox" '+(selOrders.has(o.id)?'checked':'')+' onchange="toggleSel(\''+o.id+'\',this.checked)">';
-      h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+esc(orderName(o))+'</div>';
+      h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+esc(names[0])+(arr.length>1?(' <span style="font-size:11px;color:var(--accent-2)">等 '+arr.length+' 件</span>'):'')+'</div>'+(arr.length>1?('<div style="font-size:11px;color:var(--muted);margin-top:2px">'+esc(names.slice(1).join("、"))+'</div>'):'');
       h+='<div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+esc(o.date)+' · '+esc((pmeta(o.platformId)||{}).name||"")+' · '+esc(aname(o.accountId))+'</div></div>';
       h+='<select class="status-sel" onchange="quickStatus(\''+o.id+'\',this.value)">'+["待发货","已发货","已完成","已退款","已退货","已换货"].map(function(s){return '<option '+(o.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select>';
       h+='</div>';
       h+='<div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:9px;font-size:12.5px">';
-      h+='<span>'+yuan(o.price)+' × '+o.qty+'</span>';
-      h+='<span>实付 <b style="color:var(--green)">'+yuan(orderPaid(o))+'</b></span>';
+      h+=(arr.length>1?('<span>共 '+qtyAll+' 件</span>'):('<span>'+yuan(o.price)+' × '+o.qty+'</span>'));
+      h+='<span>实付 <b style="color:var(--green)">'+yuan(arr.reduce(function(s,x){return s+orderPaid(x);},0))+'</b></span>';
       h+='<span>费用 <b style="color:var(--amber)">'+yuan(fees)+'</b></span>';
       h+='<span>净收入 '+yuan(net)+'</span>';
       h+='<span>利润 <b style="color:'+(profit>=0?'var(--green)':'var(--red)')+'">'+yuan(profit)+'</b></span>';
@@ -3213,38 +3216,40 @@ function renderOrderTbl(){
       h+='<div style="font-size:12px;color:var(--muted);margin-top:7px">买家：'+esc(o.buyer||"—")+(o.contact?('　'+esc(o.contact)):'')+'</div>';
       if(o.note) h+='<div style="font-size:11.5px;color:var(--muted);margin-top:3px">备注：'+esc(o.note)+'</div>';
       h+='<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">';
-      h+='<button class="btn btn-ghost btn-sm" onclick="printOrder(\''+o.id+'\')">🖨️ 打印</button>';
+      h+='<button class="btn btn-ghost btn-sm" onclick="printGroupOf(\''+o.id+'\')">🖨️ 打印</button>';
       h+='<button class="btn btn-ghost btn-sm" onclick="openOrderForm(\''+o.id+'\')">✏️ 编辑</button>';
-      h+='<button class="btn btn-ghost btn-sm" style="color:var(--amber)" onclick="returnOrder(\''+o.id+'\')">🔄 退货</button>';
+      h+='<button class="btn btn-ghost btn-sm" style="color:var(--amber)" onclick="returnGroup(\''+o.id+'\')">🔄 退货</button>';
       h+='<button class="btn btn-ghost btn-sm" onclick="orderAttach(\''+o.id+'\')">📎 附件</button>';
-      h+='<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delOrder(\''+o.id+'\')">🗑️ 删除</button>';
+      h+='<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delGroup(\''+o.id+'\')">🗑️ 删除</button>';
       h+='</div></div>';
       return h;
-    }).join("");
+    }).join("");})();
     return;
   }
   el.innerHTML=`${_total>rows.length?('<div style="margin:10px 26px;font-size:12.5px;color:var(--amber)">共 '+_total+' 条，已显示 '+rows.length+' 条<button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="oLimit+=200;renderOrderTbl()">⬇️ 加载更多</button></div>'):""}<div class="table-wrap"><table class="tbl-nowrap">
     <thead><tr><th style="width:30px"><input type="checkbox" name="selall" onchange="selAll(this.checked)"></th><th>销售日期</th><th>平台</th><th>账号</th><th>商品</th><th>单价×数量</th><th>实付(含运)</th><th>订单费用</th><th>净收入</th><th>预估利润</th><th>退款</th><th>买家 / 联系方式</th><th>买家备注</th><th>状态</th><th>操作</th></tr></thead>
-    <tbody>${rows.map(o=>{const fees=orderFees(o),net=orderNet(o),profit=net-orderCost(o),rf=o.refund;return `<tr>
-      <td><input type="checkbox" ${selOrders.has(o.id)?"checked":""} onchange="toggleSel('${o.id}',this.checked)"></td>
-      <td style="white-space:nowrap;font-weight:600;color:var(--text)">${esc(o.date)}</td>
-      <td>${pchip(o.platformId)}</td>
-      <td style="font-size:12.5px;color:var(--muted)">${esc(aname(o.accountId))}</td>
-      <td style="font-weight:600">${esc(orderName(o))}</td>
-      <td>${yuan(o.price)} × ${o.qty}</td>
-      <td style="color:var(--green);font-weight:700">${yuan(orderPaid(o))}</td>
-      <td><div style="color:var(--amber);font-weight:600">${yuan(fees)}</div><div style="font-size:10px;color:var(--muted)">扣${fmt(o.comm||0)} ${+o.extraRate?"增"+fmt(orderExtra(o))+" ":""}运${fmt(o.shipping||0)} 其${fmt(o.other||0)}</div></td>
-      <td style="color:var(--green)">${yuan(net)}</td>
-      <td style="color:${profit>=0?"var(--green)":"var(--red)"};font-weight:700">${yuan(profit)}</td>
-      <td>${rf&&+rf.amount>0?`<div style="color:var(--red);font-weight:600">−${yuan(rf.amount)}</div><div style="font-size:10px;color:var(--muted)">${esc(rf.date||"—")}</div>`:`<span style="color:var(--muted)">—</span>`}</td>
-      <td><div style="font-weight:600">${esc(o.buyer)}</div><div style="font-size:11px;color:var(--accent-2)">${esc(o.contact||"—")}</div></td>
-      <td style="color:var(--muted);max-width:150px" title="${esc(o.note||"")}">${esc(o.note||"—")}</td>
-      <td><select class="status-sel" onchange="quickStatus('${o.id}',this.value)">${["待发货","已发货","已完成","已退款","已退货","已换货"].map(s=>`<option ${o.status===s?"selected":""}>${s}</option>`).join("")}</select></td>
-      <td><div class="table-actions">
-        <div class="icon-btn" title="打印面单" style="color:var(--accent-2)" onclick="printOrder('${o.id}')">🖨️</div>
-        <div class="icon-btn edit" title="编辑" onclick="openOrderForm('${o.id}')">✏️</div>
-        <div class="icon-btn" title="退货" style="color:var(--amber)" onclick="returnOrder('${o.id}')">🔄</div><div class="icon-btn" title="附件" onclick="orderAttach('${o.id}')">📎</div><div class="icon-btn" title="删除" style="color:var(--red)" onclick="delOrder('${o.id}')">🗑️</div>
-      </div></td></tr>`;}).join("")}</tbody></table></div>`;
+    <tbody>${(function(){var _g={},_ord=[];rows.forEach(function(o){var k=o.gid||("_"+o.id);if(!_g[k]){_g[k]=[];_ord.push(k);}_g[k].push(o);});return _ord.map(function(k){var arr=_g[k];var o=arr[0];var q=0,gfees=0,gnet=0,gcost=0,grefund=0,gpaid=0;arr.forEach(function(x){q+=effQty(x);gfees+=orderFees(x);gnet+=orderNet(x);gcost+=orderCost(x);grefund+=orderRefund(x);gpaid+=orderPaid(x);});var gprofit=gnet-gcost;var allSel=arr.every(function(x){return selOrders.has(x.id);});var names=arr.map(function(x){return orderName(x);});return '<tr>'+
+      '<td><input type="checkbox" '+(allSel?'checked':'')+' onchange="toggleSelGroup(\''+o.id+'\',this.checked)"></td>'+
+      '<td style="white-space:nowrap;font-weight:600;color:var(--text)">'+esc(o.date)+'</td>'+
+      '<td>'+pchip(o.platformId)+'</td>'+
+      '<td style="font-size:12.5px;color:var(--muted)">'+esc(aname(o.accountId))+'</td>'+
+      '<td style="font-weight:600">'+esc(names[0])+(arr.length>1?(' <span style="font-size:11px;color:var(--accent-2)">等 '+arr.length+' 件</span>'):'')+(arr.length>1?('<div style="font-size:10.5px;color:var(--muted)">'+esc(names.slice(1).join("、"))+'</div>'):'')+'</td>'+
+      '<td>'+(arr.length>1?('<span style="color:var(--muted)">共 '+q+' 件</span>'):(yuan(o.price)+' × '+o.qty))+'</td>'+
+      '<td style="color:var(--green);font-weight:700">'+yuan(gpaid)+'</td>'+
+      '<td><div style="color:var(--amber);font-weight:600">'+yuan(gfees)+'</div></td>'+
+      '<td style="color:var(--green)">'+yuan(gnet)+'</td>'+
+      '<td style="color:'+(gprofit>=0?'var(--green)':'var(--red)')+';font-weight:700">'+yuan(gprofit)+'</td>'+
+      '<td>'+(grefund>0?('<span style="color:var(--red);font-weight:600">−'+yuan(grefund)+'</span>'):'<span style="color:var(--muted)">—</span>')+'</td>'+
+      '<td><div style="font-weight:600">'+esc(o.buyer)+'</div><div style="font-size:11px;color:var(--accent-2)">'+esc(o.contact||'—')+'</div></td>'+
+      '<td style="color:var(--muted);max-width:150px" title="'+esc(o.note||'')+'">'+esc(o.note||'—')+'</td>'+
+      '<td><select class="status-sel" onchange="quickStatus(\''+o.id+'\',this.value)">'+['待发货','已发货','已完成','已退款','已退货','已换货'].map(function(s){return '<option '+(o.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></td>'+
+      '<td><div class="table-actions">'+
+        '<div class="icon-btn" title="打印'+(arr.length>1?'（整单多行）':'面单')+'" style="color:var(--accent-2)" onclick="printGroupOf(\''+o.id+'\')">🖨️</div>'+
+        '<div class="icon-btn edit" title="编辑" onclick="openOrderForm(\''+o.id+'\')">✏️</div>'+
+        '<div class="icon-btn" title="退货" style="color:var(--amber)" onclick="returnGroup(\''+o.id+'\')">🔄</div>'+
+        '<div class="icon-btn" title="附件" onclick="orderAttach(\''+o.id+'\')">📎</div>'+
+        '<div class="icon-btn" title="删除'+(arr.length>1?('（整单 '+arr.length+' 件）'):'')+'" style="color:var(--red)" onclick="delGroup(\''+o.id+'\')">🗑️</div>'+
+      '</div></td></tr>';}).join("");})()}</tbody></table></div>`;
 }
 function custDl(){return '<datalist id="custList">'+DB.customers.map(c=>'<option value="'+esc(c.name)+'">').join("")+'</datalist>';}
 function pickCustomer(){const n=$("#f_buyer")?$("#f_buyer").value.trim():"";const c=DB.customers.find(x=>x.name===n);if(c&&$("#f_contact")&&c.contact)$("#f_contact").value=c.contact;}
@@ -3602,13 +3607,13 @@ function saveOrderNew(){
     if(!items.length){toast(_tp?"请至少填写一个临时商品名称":"请至少添加一件商品","err");return;}
     if(items.some(function(it){return (+it.qty||0)<=0;})){toast("数量要大于 0","err");return;}
     if(items.some(function(it){return (+it.price||0)<0||(+it.price||0)>9999999;})){toast("单价不正确（不能为负或过大）","err");return;}
-    var n=0,made=[];
+    var n=0,made=[];var gid="g"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);if(items.length<2)gid="";
     items.forEach(function(it){
       var p=_tp?null:DB.products.find(function(x){return x.id===it.pid;});if(!_tp&&!p)return;
       var obj={platformId:plat,accountId:acct,productId:(_tp?"":it.pid),isTemp:!!_tp,productName:(_tp?(it.name||"").trim():""),variantName:"",orderUnit:it.unit||"",tempCost:(_tp?(+it.cost||0):0),
         qty:(+it.qty||1)*oiFactor(it),price:+it.price||0,buyerShip:0,commRate:0,comm:0,extraRate:0,extra:0,shipping:0,other:0,refund:null,
         payMode:pm,creditCustomer:(pm==="credit"?ccn:""),creditDue:"",creditPaid:0,creditPayments:[],
-        buyer:buy,contact:contact,note:note,addr:addr,deliverDate:deliver,planDue:plandue,date:date,status:"待发货"};
+        buyer:buy,contact:contact,note:note,addr:addr,deliverDate:deliver,planDue:plandue,date:date,status:"待发货",gid:gid};
       obj.seller=(CUR&&CUR.username)?CUR.username:"";
       if(!_tp)stockAdj(p,obj.variantName,-effQty(obj));
       obj.seq=DB.orders.filter(function(x){return x.date===obj.date;}).length+1;
@@ -3714,6 +3719,25 @@ function compareCard(){
    +'</tbody></table></div>';
 }
 
+function orderGroup(id){var o=DB.orders.find(function(x){return x.id===id;});if(!o)return null;if(o.gid){var l=DB.orders.filter(function(x){return x.gid===o.gid;});return l.length?l:[o];}return [o];}
+function toggleSelGroup(id,on){var l=orderGroup(id)||[];l.forEach(function(x){if(on)selOrders.add(x.id);else selOrders.delete(x.id);});}
+function delGroup(id){
+  var l=orderGroup(id)||[];if(!l.length)return;
+  if(l.length>1&&!confirm("这一单有 "+l.length+" 件商品，确定整单删除？（库存会全部回补）"))return;
+  if(l.length===1&&!confirm("确定删除该订单？（已扣库存自动回补）"))return;
+  l.forEach(function(x){var prod=DB.products.find(function(p){return p.id===x.productId;});if(prod)prod.stock=Math.max(0,prod.stock+effQty(x));});
+  var ids=l.map(function(x){return x.id;});
+  DB.orders=DB.orders.filter(function(x){return ids.indexOf(x.id)<0;});
+  logAct("删除订单",orderName(l[0])+(l.length>1?(" 等"+l.length+"件"):""));
+  save();render();toast("已删除"+(l.length>1?("整单 "+l.length+" 件"):"订单")+"，库存已回补","warn");
+}
+function printGroupOf(id){
+  try{var l=orderGroup(id)||[];if(!l.length)return;var ids=l.map(function(x){return x.id;});
+    selOrders.clear();ids.forEach(function(i){selOrders.add(i);});
+    if(typeof printMulti==="function")printMulti();else printOrder(id);
+  }catch(e){toast("打印失败："+e.message,"err");}
+}
+function returnGroup(id){var l=orderGroup(id)||[];if(l.length>1){toast("多件订单：请点 ✏️ 编辑后逐件退货，或整单删除","warn");return;}returnOrder(id);}
 function logAct(a,d){try{DB.logs=DB.logs||[];DB.logs.push({t:new Date().toISOString(),u:(CUR&&CUR.username)||"",a:a,d:d||""});if(DB.logs.length>2000)DB.logs=DB.logs.slice(-2000);}catch(e){}}
 function saveOrder(id,more){
   const buy=$("#f_buyer").value.trim();
