@@ -45,7 +45,7 @@
 #reader canvas.drawingBuffer{display:none}
 </style></head>
 <body>
-  <h1>📷 扫码入库 <span id="netTag" class="tag"></span> <span id="syncTick" class="tag" style="background:#182738;color:#9fb3d1"></span></h1>
+  <h1>📷 扫码入库 <span class="tag" style="background:#7c3aed;color:#fff">v9-11c</span> <span id="netTag" class="tag"></span> <span id="syncTick" class="tag" style="background:#182738;color:#9fb3d1"></span></h1>
 
   <div class="card">
     <div id="reader" style="width:100%;height:220px;border-radius:12px;overflow:hidden;background:#000;position:relative"></div>
@@ -226,9 +226,16 @@ function handleCode(v){v=String(v||"").trim();if(!v)return;const now=Date.now();
   try{ if(typeof stopCam==="function") stopCam(); }catch(e){}
   try{ var _ff=document.getElementById("f_name"); if(_ff&&_ff.scrollIntoView)_ff.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}}
 let frameTimer=null,_busy=false,_reader=null;
+var _codeHist=[];
+function _confirmCode(t){ if(!t)return false; _codeHist.push(t); if(_codeHist.length>4)_codeHist.shift(); var n=0; for(var i=0;i<_codeHist.length;i++){ if(_codeHist[i]===t)n++; } return n>=2; }
 function startFrameScan(){
   if(!window.ZXing){return;}
-  if(!_reader){try{_reader=new ZXing.BrowserMultiFormatReader();}catch(e){return;}}
+  if(!_reader){try{
+    var _H=new Map();
+    try{_H.set(ZXing.DecodeHintType.TRY_HARDER,true);}catch(e){}
+    try{_H.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A,ZXing.BarcodeFormat.UPC_E,ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.CODE_39,ZXing.BarcodeFormat.CODE_93,ZXing.BarcodeFormat.ITF,ZXing.BarcodeFormat.CODABAR,ZXing.BarcodeFormat.QR_CODE]);}catch(e){}
+    _reader=new ZXing.BrowserMultiFormatReader(_H);
+  }catch(e){try{_reader=new ZXing.BrowserMultiFormatReader();}catch(e2){return;}}}
   if(frameTimer){clearInterval(frameTimer);frameTimer=null;}
   frameTimer=setInterval(function(){
     if(!camRunning||_busy){return;}
@@ -237,7 +244,7 @@ function startFrameScan(){
     _busy=true;
     try{
       var cv=document.createElement("canvas");
-      var w=v.videoWidth,h=v.videoHeight,mx=1000;
+      var w=v.videoWidth,h=v.videoHeight,mx=1280;
       if(w>mx){h=Math.round(h*mx/w);w=mx;}
       cv.width=w;cv.height=h;
       cv.getContext("2d").drawImage(v,0,0,w,h);
@@ -245,7 +252,7 @@ function startFrameScan(){
       _reader.decodeFromImageUrl(url).then(function(res){
         _busy=false;frameCount++;
         var si=document.getElementById("scanInfo");if(si)si.textContent="已抓帧 "+frameCount+" 次 · 识别中…";
-        if(res)handleCode(res.getText());
+        if(res){var _t=String(res.getText()||"").trim();if(_confirmCode(_t)){handleCode(_t);}else{try{var _si=document.getElementById("scanInfo");if(_si)_si.textContent="已抓帧 "+frameCount+" 次 · 再稳一下确认 "+_t;}catch(e){}}}
       }).catch(function(){
         _busy=false;frameCount++;
         var si=document.getElementById("scanInfo");if(si)si.textContent="已抓帧 "+frameCount+" 次 · 识别中…";
@@ -316,7 +323,7 @@ function toggleCam(){
   }catch(e){ camRunning=false; document.getElementById("camBtn").textContent="🎥 开启摄像头"; toast("无法打开摄像头："+e.message); }
 }
 async function submitScan(auto){
-  const payload={mode:((document.querySelector("input[name=smode]:checked")||{}).value||"in"),barcode:document.getElementById("f_bc").value.trim(),name:document.getElementById("f_name").value.trim(),brand:document.getElementById("f_brand").value.trim(),category:document.getElementById("f_cat").value.trim(),qty:((+document.getElementById("f_qty").value||0)*((function(){var s=document.getElementById("f_unitPick");var w=document.getElementById("unitPickWrap");return (s&&w&&w.style.display!=="none")?(+s.value||1):1;})())),cost:+document.getElementById("f_cost").value||0,price:+document.getElementById("f_price").value||0,unit:document.getElementById("f_unit").value.trim()||"个",attachProductId:((function(){var w=document.getElementById("attachWrap"),s=document.getElementById("f_attach");return (w&&w.style.display!=="none"&&s)?s.value:"";})()),variantName:((function(){var w=document.getElementById("attachWrap"),s=document.getElementById("f_varName");return (w&&w.style.display!=="none"&&s)?s.value.trim():"";})())};
+  const payload={mode:((document.querySelector("input[name=smode]:checked")||{}).value||"in"),barcode:document.getElementById("f_bc").value.trim(),name:document.getElementById("f_name").value.trim(),brand:document.getElementById("f_brand").value.trim(),category:((function(){var a=document.getElementById("f_cat").value.trim();if(a)return a;var s=document.getElementById("f_catSel");return s?String(s.value||"").trim():"";})()),qty:((+document.getElementById("f_qty").value||0)*((function(){var s=document.getElementById("f_unitPick");var w=document.getElementById("unitPickWrap");return (s&&w&&w.style.display!=="none")?(+s.value||1):1;})())),cost:+document.getElementById("f_cost").value||0,price:+document.getElementById("f_price").value||0,unit:document.getElementById("f_unit").value.trim()||"个",attachProductId:((function(){var w=document.getElementById("attachWrap"),s=document.getElementById("f_attach");return (w&&w.style.display!=="none"&&s)?s.value:"";})()),variantName:((function(){var w=document.getElementById("attachWrap"),s=document.getElementById("f_varName");return (w&&w.style.display!=="none"&&s)?s.value.trim():"";})())};
   if(!payload.barcode&&!payload.name){if(!auto)toast('<span class="err">请先扫码或填写条形码/名称</span>');return;}
   if(!payload.category){if(!auto)toast('<span class="err">请选择/输入类目</span>');return;}
   if(payload.qty<=0){if(!auto)toast('<span class="err">请填写数量</span>');return;}

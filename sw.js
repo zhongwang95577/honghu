@@ -3,7 +3,7 @@
    - 静态资源（js/png/manifest）：缓存优先
    - 新版本 install 后立即接管；页面收到 controllerchange 会自动刷新
 */
-const CACHE = 'honghu-v5';
+const CACHE = 'honghu-v6';
 const SHELL = ['app.html', 'scan.html', 'index.html', 'manifest.json', 'manifest-scan.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', function(e){
