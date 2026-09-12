@@ -2978,7 +2978,7 @@ function renderInvTbl(){
       if(isAdmin()){h+='<div style="display:flex;gap:8px;margin-top:9px"><button class="btn btn-ghost btn-sm" onclick="openProductForm(\''+p.id+'\')">✏️ 编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delProduct(\''+p.id+'\')">🗑️ 删除</button></div>';}
       h+='</div>';
       return h;
-    }).join("")+'<div style="padding:10px 14px;font-size:12.5px;color:var(--muted)">'+''+'</div>';
+    }).join("")+_pager;
     return;
   }
   el.innerHTML=`<div class="table-wrap"><table>
