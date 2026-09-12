@@ -42,7 +42,7 @@ body{
 .nav a.active::before{content:"";position:absolute;left:-16px;top:20%;bottom:20%;width:4px;border-radius:4px;background:linear-gradient(#6366f1,#0ea5e9)}
 .side-foot{margin-top:auto;padding:12px 10px;font-size:12px;color:var(--muted);background:#f1f5f9;border:1px solid var(--border);border-radius:12px;line-height:1.7}
 .side-foot b{color:var(--text);font-size:12px}
-.main{flex:1;padding:8px 8px 40px;max-width:100%;margin:0}
+.main{flex:1;padding:6px 4px 40px;max-width:100%;margin:0}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 26px;gap:14px;flex-wrap:wrap}
 .topbar .t-left h2{font-size:24px;font-weight:800;letter-spacing:.3px;color:var(--text)}
 .topbar .t-left p{color:var(--muted);font-size:13px;margin-top:5px}
@@ -84,7 +84,7 @@ h3.sec .dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(#6
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;transition:.3s;box-shadow:var(--shadow)}
 .card:hover{box-shadow:0 18px 40px rgba(15,23,42,.10)}
 .card h4{font-size:15px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px;color:var(--text)}
-.table-wrap{padding:0 26px 10px;overflow-x:auto}
+.table-wrap{padding:0 10px 10px;overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:640px}
 @media (max-width:760px){.table-wrap{-webkit-overflow-scrolling:touch;scrollbar-width:thin}.table-wrap table{min-width:0}.table-wrap::-webkit-scrollbar{height:10px}.table-wrap::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:8px}}
 @media (max-width:760px){#view table:not(.no-card),#modal table:not(.no-card){min-width:0!important;display:block;width:100%}#view thead:not(.no-card),#modal thead:not(.no-card){display:none}#view tbody:not(.no-card),#modal tbody:not(.no-card){display:block}#view table:not(.no-card) tbody tr,#modal table:not(.no-card) tbody tr{display:block;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:10px 12px;margin:9px 12px;box-shadow:var(--shadow)}#view table:not(.no-card) tbody td,#modal table:not(.no-card) tbody td{display:block;border:0!important;padding:4px 0!important;white-space:normal!important;font-size:12.5px}#view tbody td[data-l]:not([data-l=""]):before,#modal tbody td[data-l]:not([data-l=""]):before{content:attr(data-l) "：";color:var(--muted);font-weight:600}#view .table-wrap,#modal .table-wrap{padding-left:0!important;padding-right:0!important}}
@@ -97,7 +97,8 @@ thead th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;paddi
 tbody td{padding:13px 14px;font-size:13.5px;border-bottom:1px solid #eef2f7;vertical-align:middle;color:var(--text)}
 tbody tr{transition:.15s}
 tbody tr:hover{background:#f8fafc}
-.table-actions{display:flex;gap:6px}
+#orderTbl .table-actions .icon-btn:not(.edit){display:none!important}
+#orderTbl .table-actions{display:flex;gap:6px}
 .pchip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:20px;font-size:12px;font-weight:700}
 .pchip .em{font-size:14px}
 .acct{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;transition:.3s;position:relative;box-shadow:var(--shadow)}
@@ -2922,6 +2923,7 @@ function biImport(){
     save();closeModal();render();toast("✅ 导入完成：新增 "+add+" 个，更新库存 "+upd+" 个");
   }catch(e){toast("导入失败："+e.message,"err");}
 }
+function pickBrand(el){try{iF.brand=el.getAttribute("data-b")||"all";iF.page=1;renderInvTbl();}catch(e){}}
 function vInventory(){
   const total=DB.products.length;
   const low=DB.products.filter(p=>p.stock<=p.minStock).length;
@@ -2951,9 +2953,17 @@ function renderInvTbl(){
   if(iF.brand!=="all")rows=rows.filter(p=>(p.brand||"")===iF.brand);
   if(iF.cat!=="all")rows=rows.filter(p=>(p.category||"")===iF.cat);
   if(q)rows=rows.filter(p=>[p.name,p.sku,p.barcode,p.location,p.brand,p.category].join(" ").toLowerCase().includes(q));
+  if(iF.brand==="all"&&!q){
+    var _bm={};DB.products.forEach(function(p){var b=(p.brand||"（未填品牌）");_bm[b]=_bm[b]||{n:0,s:0};_bm[b].n++;_bm[b].s+=(+p.stock||0);});
+    var _bk=Object.keys(_bm).sort();
+    el.innerHTML='<div style="padding:12px 10px 6px;font-size:13px;color:var(--muted)">👆 按品牌查看：点一个品牌进入，看该品牌的产品（支持分页）</div>'
+      +'<div class="grid g-3">'+_bk.map(function(b){return '<div class="card" data-b="'+esc(b)+'" onclick="pickBrand(this)" style="cursor:pointer;padding:14px 16px"><div style="font-weight:700;font-size:15px">'+esc(b)+'</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+_bm[b].n+' 个商品 · 库存合计 '+_bm[b].s+'</div></div>';}).join("")+'</div>';
+    return;
+  }
   var _ps=(iF.size||50);var _tot=rows.length;var _pages=Math.max(1,Math.ceil(_tot/_ps));
   if(!iF.page||iF.page<1)iF.page=1; if(iF.page>_pages)iF.page=_pages;
   var _start=(iF.page-1)*_ps; rows=rows.slice(_start,_start+_ps);
+  var _back=(iF.brand!=="all")?('<button class="btn btn-ghost btn-sm" onclick="iF.brand=\'all\';iF.page=1;renderInvTbl()">← 返回品牌</button>'):"";
   var _pager='<div style="padding:12px 4px;font-size:13px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap">共 '+_tot+' 个 · 第 '+iF.page+'/'+_pages+' 页 <button class="btn btn-ghost btn-sm" onclick="iF.page='+(iF.page-1)+';renderInvTbl()">← 上一页</button> <button class="btn btn-ghost btn-sm" onclick="iF.page='+(iF.page+1)+';renderInvTbl()">下一页 →</button> 每页 <select onchange="iF.size=+this.value;iF.page=1;renderInvTbl()"><option value="20"'+(iF.size===20?" selected":"")+'>20</option><option value="50"'+(iF.size===50?" selected":"")+'>50</option><option value="100"'+(iF.size===100?" selected":"")+'>100</option><option value="9999"'+(iF.size===9999?" selected":"")+'>全部</option></select></div>';
   if(!rows.length){el.innerHTML=`<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">📦</div><p>没有匹配的商品（共 ${DB.products.length} 个）</p></div></div>`;return;}
   if(window.innerWidth<760){
@@ -3881,8 +3891,8 @@ function compareCard(){
 }
 
 function orderGroup(id){var o=DB.orders.find(function(x){return x.id===id;});if(!o)return null;if(o.gid){var l=DB.orders.filter(function(x){return x.gid===o.gid;});return l.length?l:[o];}return [o];}
-var _BULKBAR='<div id="ordBulk" class="filterbar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:8px 12px;margin:0 26px 8px"><span style="font-size:13px">已选 <b id="ordBulkN">0</b> 单：</span><button class="btn btn-ghost btn-sm" onclick="printMulti()">🖨️ 合并打印</button><button class="btn btn-ghost btn-sm" onclick="bulkSaveInvoice()">💾 存电子单据</button><button class="btn btn-ghost btn-sm" style="color:var(--amber)" onclick="bulkReturn()">🔄 退货</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="bulkDelete()">🗑️ 删除</button><button class="btn btn-ghost btn-sm" onclick="selOrders.clear();renderOrderTbl()">清空选择</button></div>';
-function updateOrdBulk(){try{var el=document.getElementById("ordBulk");if(!el)return;var n=selOrders.size;el.style.display=n?"flex":"none";var c=document.getElementById("ordBulkN");if(c)c.textContent=n;}catch(e){}}
+var _BULKBAR='<div id="ordBulk" class="filterbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:8px 12px;margin:0 26px 8px"><span style="font-size:13px"><span id="ordBulkTip">勾选订单后点下面按钮（可多选）：</span><b id="ordBulkN" style="display:none">0</b></span><button class="btn btn-ghost btn-sm" onclick="printMulti()">🖨️ 合并打印</button><button class="btn btn-ghost btn-sm" onclick="bulkSaveInvoice()">💾 存电子单据</button><button class="btn btn-ghost btn-sm" onclick="bulkEdit()">✏️ 编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--amber)" onclick="bulkReturn()">🔄 退货</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="bulkDelete()">🗑️ 删除</button><button class="btn btn-ghost btn-sm" onclick="selOrders.clear();renderOrderTbl()">清空选择</button></div>';
+function updateOrdBulk(){try{var el=document.getElementById("ordBulk");if(!el)return;var n=selOrders.size;el.style.display="flex";var c=document.getElementById("ordBulkN");if(c)c.textContent=n;var t=document.getElementById("ordBulkTip");if(t)t.textContent=n?("已选 "+n+" 单："):"勾选订单后点下面按钮（可多选）：";}catch(e){}}
 function bulkDelete(){
   var ids=[].concat.apply([],Array.from(selOrders).map(function(id){return (orderGroup(id)||[]).map(function(x){return x.id;});}));
   ids=[...new Set(ids)];if(!ids.length)return;
@@ -3896,6 +3906,7 @@ function bulkReturn(){
   ids.forEach(function(id){(orderGroup(id)||[]).forEach(function(x){var p=DB.products.find(function(y){return y.id===x.productId;});if(p)p.stock=(+p.stock||0)+(x.qty||0);x.status="已退货";});});
   selOrders.clear();logAct("批量退货",ids.length+" 单");save();render();toast("已批量退货，库存已回补");
 }
+function bulkEdit(){var ids=[...selOrders];if(ids.length!==1){toast("「编辑」请只勾选 1 单","warn");return;}var l=orderGroup(ids[0]);if(l&&l.length>1){window._editGroup=l;}openOrderForm(ids[0]);}
 function bulkSaveInvoice(){
   var ids=[...selOrders];if(ids.length!==1){toast("「存电子单据」请只勾选 1 单（多单请用合并打印）","warn");return;}
   saveInvoiceImage(ids[0]);
@@ -3963,8 +3974,6 @@ function vDebts(){
     +'<td><div class="table-actions"><button class="btn btn-primary btn-sm" onclick="payDebt(\''+d.id+'\')">💰 还款</button><button class="btn btn-ghost btn-sm" onclick="openDebtForm(\''+d.id+'\')">✏️ 编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delDebt(\''+d.id+'\')">🗑️ 删除</button></div></td></tr>';}).join("")
     :'<tr><td colspan="8" style="text-align:center;color:var(--muted)">还没有记录，点右上角「新增借款」</td></tr>';
   html+='</tbody></table></div>';
-  var allp=[];(DB.debts||[]).forEach(function(d){(d.payments||[]).forEach(function(p){allp.push({n:d.name,p:p});});});
-  if(allp.length){html+='<h3 class="sec"><span class="dot"></span>还款记录（最近 100 条）</h3><div class="table-wrap"><table><thead><tr><th>日期</th><th>借款人</th><th>还款金额</th><th>备注</th></tr></thead><tbody>';allp.slice(-100).reverse().forEach(function(x){html+='<tr><td>'+esc(x.p.date||"")+'</td><td>'+esc(x.n||"")+'</td><td style="color:var(--green)">'+yuan(x.p.amount)+'</td><td style="color:var(--muted)">'+esc(x.p.note||"")+'</td></tr>';});html+='</tbody></table></div>';}
   return html;
 }
 function debtDetail(name){
