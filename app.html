@@ -3178,7 +3178,7 @@ function buildMultiHTML(orders,cfg){
       <tr class="sumrow"><td></td><td>合计</td><td></td><td>${totQty}</td><td></td><td>${money(totAmt)}</td><td></td></tr>
     </tbody></table>
     <div class="tot"><span>产品合计：${money(totAmt)}</span><span>合计金额：${rmbUpper(totAmt)}  ${money(totAmt)}</span></div>
-    <div class="foot"><div>订货电话：${esc(cfg.phones)}</div><div class="fr">制单人：${esc((typeof o!=="undefined"&&o.maker)||cfg.by||((typeof o!=="undefined"&&o.seller)||(typeof orders!=="undefined"&&orders[0]&&(orders[0].maker||orders[0].seller))||(CUR&&CUR.username)||""))}</div><div>订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
+    <div class="foot"><div>订货电话：${esc(cfg.phones)}</div><div class="fr">制单人：${esc((typeof o!=="undefined"&&o.maker)||(CUR&&CUR.username)||cfg.by||((typeof o!=="undefined"&&o.seller)||(typeof orders!=="undefined"&&orders[0]&&orders[0].seller)||""))}</div><div>订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
   </div><style>@media print{.noprint{display:none!important}}</style><div class="noprint" style="position:fixed;top:12px;right:14px;display:flex;gap:8px;z-index:99"><button onclick="window.print()" style="padding:10px 18px;font-size:15px;font-weight:700;border:0;border-radius:10px;background:#2563eb;color:#fff;cursor:pointer">🖨️ 打印 / 存为 PDF</button><button onclick="window.close()" style="padding:10px 16px;font-size:15px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;cursor:pointer">✖ 关闭</button></div>${'<'+'script>function _dp(){try{window.focus();window.print();}catch(e){}}if(document.readyState==="complete")setTimeout(_dp,400);else window.addEventListener("load",function(){setTimeout(_dp,400);});</'+'script>'}</body></html>`;
 }
 function oPrice(o){return o.qty*o.price;}
@@ -3277,6 +3277,13 @@ function delCustomer(id){if(!confirm("确定删除该客户？"))return;DB.custo
 function customersCsv(){return DB.customers.map(c=>({客户:c.name,联系电话:c.contact||"",地址:c.addr||"",备注:c.note||""}));}
 function openOrderForm(id){
   try{
+    if(id){var _o0=DB.orders.find(function(x){return x.id===id;});
+      if(_o0&&_o0.gid){var _g0=DB.orders.filter(function(x){return x.gid===_o0.gid;});
+        if(_g0.length>1){ window._editGroup=_g0; id=""; } else { window._editGroup=null; }
+      } else { window._editGroup=null; }
+    } else { window._editGroup=null; }
+  }catch(e){ window._editGroup=null; }
+  try{
     if(!id&&(!DB.platforms||!DB.platforms.length||!DB.accounts||!DB.accounts.length)){
       try{if(typeof cloudPoll==="function")cloudPoll();}catch(e){}
       try{if(typeof pollLocalServer==="function")pollLocalServer();}catch(e){}
@@ -3358,7 +3365,19 @@ function openOrderForm(id){
       </div>
       <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-ghost" onclick="saveOrderNew(true)" title="保存后立刻打开电子票据">🖨️ 保存并开票</button><button class="btn btn-primary" onclick="saveOrderNew()">保存订单</button></div>`);
   }
-  (()=>{try{var d=$("#f_date");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);}catch(e){}try{if(document.getElementById("f_prod")){toggleRefund();autoRate(!id);onPType();if(typeof fillVariantSel==="function")fillVariantSel();}}catch(e){}try{onPMode();}catch(e){}try{var pd=$("#f_plandue");if(pd&&!pd.value)pd.value=new Date().toISOString().slice(0,10);}catch(e){}try{if(document.getElementById("oiBody"))oiRender();}catch(e){}})();
+  (()=>{try{var d=$("#f_date");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);}catch(e){}try{if(document.getElementById("f_prod")){toggleRefund();autoRate(!id);onPType();if(typeof fillVariantSel==="function")fillVariantSel();}}catch(e){}try{onPMode();}catch(e){}try{var pd=$("#f_plandue");if(pd&&!pd.value)pd.value=new Date().toISOString().slice(0,10);}catch(e){}try{if(document.getElementById("oiBody"))oiRender();}catch(e){}
+  try{ if(window._editGroup&&window._editGroup.length){ var g=window._editGroup,f=g[0];
+    var setv=function(id,v){var e=document.getElementById(id);if(e)e.value=(v==null?"":v);};
+    setv("f_buyer",f.buyer);setv("f_contact",f.contact);setv("f_date",f.date);setv("f_plandue",f.planDue);setv("f_deliver",f.deliverDate);
+    setv("f_addr",f.addr);setv("f_note",f.note);setv("f_maker",f.maker||((CUR&&CUR.username)||""));
+    if(f.platformId&&document.getElementById("f_p")){document.getElementById("f_p").value=f.platformId;try{syncAcct("f_a","f_p");}catch(e){}}
+    if(f.accountId&&document.getElementById("f_a"))document.getElementById("f_a").value=f.accountId;
+    if(f.payMode==="credit"){var r=document.querySelector("input[name=pmode][value=credit]");if(r){r.checked=true;try{onPMode();}catch(e){}setv("f_ccus",f.creditCustomer);}}
+    _oi=g.map(function(x){return {pid:x.productId,name:x.productName||"",cost:(x.tempCost==null?"":x.tempCost),qty:x.qty,unit:x.orderUnit||"",price:x.price};});
+    oiRender();
+    var t=document.querySelector("#modal .modal-head h3"); if(t)t.textContent="✏️ 编辑订单（"+g.length+" 件商品）";
+    var b=document.querySelector("#modal .modal-foot .btn-primary"); if(b){b.textContent="保存修改";b.setAttribute("onclick","saveOrderNew()");}
+  } }catch(e){} })();
   if(!id){const lp=localStorage.getItem("honghuLastP"),la=localStorage.getItem("honghuLastA");if(lp&&$("#f_p")){$("#f_p").value=lp;syncAcct("f_a","f_p");}if(la&&$("#f_a")){$("#f_a").value=la;autoRate(!id);} }
 }
 function platSel(sel,val){
@@ -3610,6 +3629,13 @@ function saveOrderNew(printAfter){
     if(!items.length){toast(_tp?"请至少填写一个临时商品名称":"请至少添加一件商品","err");return;}
     if(items.some(function(it){return (+it.qty||0)<=0;})){toast("数量要大于 0","err");return;}
     if(items.some(function(it){return (+it.price||0)<0||(+it.price||0)>9999999;})){toast("单价不正确（不能为负或过大）","err");return;}
+    if(window._editGroup&&window._editGroup.length){
+      var _og=window._editGroup;
+      _og.forEach(function(x){var pr=DB.products.find(function(p){return p.id===x.productId;});if(pr)pr.stock=Math.max(0,pr.stock+effQty(x));});
+      var _oids=_og.map(function(x){return x.id;});
+      DB.orders=DB.orders.filter(function(x){return _oids.indexOf(x.id)<0;});
+      window._editGroup=null;
+    }
     var n=0,made=[],firstId=null;var gid="g"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);if(items.length<2)gid="";
     items.forEach(function(it){
       var p=_tp?null:DB.products.find(function(x){return x.id===it.pid;});if(!_tp&&!p)return;
@@ -3673,7 +3699,7 @@ function doReturn(id){
 function invoiceImageData(o){
   var cfg=getPrintCfg(); if(!cfg.store)cfg.store=localStorage.getItem("honghuStore")||"";
   var list=(o.gid?DB.orders.filter(function(x){return x.gid===o.gid;}):[o]);
-  var maker=o.maker||cfg.by||o.seller||(CUR&&CUR.username)||"";
+  var maker=o.maker||(CUR&&CUR.username)||cfg.by||o.seller||"";
   var money=function(n){return Number(n||0).toFixed(2);};
   var W=760,pad=26,rowH=26,headH=150;
   var H=headH+rowH*(list.length+2)+150;
@@ -4063,7 +4089,7 @@ function buildInvoiceHTML(o,opts){
       </tbody></table>
       <div class="tot"><span>产品合计：${money(gross)}</span><span>合计金额：${rmbUpper(orderPaid(o))}  ${money(orderPaid(o))}</span></div>
       <div class="fee">买家运费 ${money(buyerShip(o))} ｜ 平台扣点 ${money(o.comm||0)}${extra?" ｜ 增值服务费 "+money(extra):""} ｜ 运费成本 ${money(o.shipping||0)} ｜ 其他 ${money(o.other||0)} ｜ 退款 ${money(refund)} ｜ <b>净收入 ${money(net)}</b></div>
-      <div class="foot"><div class="fl">订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc((typeof o!=="undefined"&&o.maker)||cfg.by||((typeof o!=="undefined"&&o.seller)||(typeof orders!=="undefined"&&orders[0]&&(orders[0].maker||orders[0].seller))||(CUR&&CUR.username)||""))}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
+      <div class="foot"><div class="fl">订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc((typeof o!=="undefined"&&o.maker)||(CUR&&CUR.username)||cfg.by||((typeof o!=="undefined"&&o.seller)||(typeof orders!=="undefined"&&orders[0]&&orders[0].seller)||""))}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
     </div>`;
   } else {
     body=`
@@ -4079,7 +4105,7 @@ function buildInvoiceHTML(o,opts){
         <tr class="sumrow"><td></td><td>合计</td><td></td><td>${o.qty}</td><td></td><td>${money(gross)}</td><td></td></tr>
       </tbody></table>
       <div class="tot"><span>产品合计：${money(gross)}</span><span>合计金额：${rmbUpper(gross)}  ${money(gross)}</span></div>
-      <div class="foot"><div class="fl">订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc((typeof o!=="undefined"&&o.maker)||cfg.by||((typeof o!=="undefined"&&o.seller)||(typeof orders!=="undefined"&&orders[0]&&(orders[0].maker||orders[0].seller))||(CUR&&CUR.username)||""))}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
+      <div class="foot"><div class="fl">订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc((typeof o!=="undefined"&&o.maker)||(CUR&&CUR.username)||cfg.by||((typeof o!=="undefined"&&o.seller)||(typeof orders!=="undefined"&&orders[0]&&orders[0].seller)||""))}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
     </div>`;
   }
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(store)} ${esc(cfg.title||"单据")}</title><style>
