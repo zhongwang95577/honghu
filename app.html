@@ -3178,7 +3178,7 @@ function buildMultiHTML(orders,cfg){
       <tr class="sumrow"><td></td><td>合计</td><td></td><td>${totQty}</td><td></td><td>${money(totAmt)}</td><td></td></tr>
     </tbody></table>
     <div class="tot"><span>产品合计：${money(totAmt)}</span><span>合计金额：${rmbUpper(totAmt)}  ${money(totAmt)}</span></div>
-    <div class="foot"><div>订货电话：${esc(cfg.phones)}</div><div class="fr">制单人：${esc(cfg.by)}</div><div>订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
+    <div class="foot"><div>订货电话：${esc(cfg.phones)}</div><div class="fr">制单人：${esc(cfg.by||orders[0].seller||((DB.accounts.find(function(a){return a.id===orders[0].accountId;})||{}).holder)||(CUR&&CUR.username)||"")}</div><div>订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
   </div><style>@media print{.noprint{display:none!important}}</style><div class="noprint" style="position:fixed;top:12px;right:14px;display:flex;gap:8px;z-index:99"><button onclick="window.print()" style="padding:10px 18px;font-size:15px;font-weight:700;border:0;border-radius:10px;background:#2563eb;color:#fff;cursor:pointer">🖨️ 打印 / 存为 PDF</button><button onclick="window.close()" style="padding:10px 16px;font-size:15px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;cursor:pointer">✖ 关闭</button></div>${'<'+'script>function _dp(){try{window.focus();window.print();}catch(e){}}if(document.readyState==="complete")setTimeout(_dp,400);else window.addEventListener("load",function(){setTimeout(_dp,400);});</'+'script>'}</body></html>`;
 }
 function oPrice(o){return o.qty*o.price;}
@@ -3220,6 +3220,7 @@ function renderOrderTbl(){
       h+='<button class="btn btn-ghost btn-sm" onclick="printGroupOf(\''+o.id+'\')">🖨️ 开电子票据</button>';
       h+='<button class="btn btn-ghost btn-sm" onclick="openOrderForm(\''+o.id+'\')">✏️ 编辑</button>';
       h+='<button class="btn btn-ghost btn-sm" style="color:var(--amber)" onclick="returnGroup(\''+o.id+'\')">🔄 退货</button>';
+      h+='<button class="btn btn-ghost btn-sm" onclick="saveInvoice(\''+o.id+'\')">💾 存单据</button>';
       h+='<button class="btn btn-ghost btn-sm" onclick="orderAttach(\''+o.id+'\')">📎 附件</button>';
       h+='<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delGroup(\''+o.id+'\')">🗑️ 删除</button>';
       h+='</div></div>';
@@ -3248,7 +3249,7 @@ function renderOrderTbl(){
         '<div class="icon-btn" title="开电子票据'+(arr.length>1?'（整单多行）':'面单')+'" style="color:var(--accent-2)" onclick="printGroupOf(\''+o.id+'\')">🖨️</div>'+
         '<div class="icon-btn edit" title="编辑" onclick="openOrderForm(\''+o.id+'\')">✏️</div>'+
         '<div class="icon-btn" title="退货" style="color:var(--amber)" onclick="returnGroup(\''+o.id+'\')">🔄</div>'+
-        '<div class="icon-btn" title="附件" onclick="orderAttach(\''+o.id+'\')">📎</div>'+
+        '<div class="icon-btn" title="保存电子单据(PDF)" style="color:var(--accent-2)" onclick="saveInvoice(\''+o.id+'\')">💾</div>'+'<div class="icon-btn" title="附件" onclick="orderAttach(\''+o.id+'\')">📎</div>'+
         '<div class="icon-btn" title="删除'+(arr.length>1?('（整单 '+arr.length+' 件）'):'')+'" style="color:var(--red)" onclick="delGroup(\''+o.id+'\')">🗑️</div>'+
       '</div></td></tr>';}).join("");})()}</tbody></table></div>`;
 }
@@ -3668,6 +3669,22 @@ function doReturn(id){
     toast("✅ 已退货：退款 "+yuan(amt)+(pre?"（计入预收）":"")+(offset?"（已冲销欠款）":""));
   }catch(e){toast("退货失败："+e.message,"err");}
 }
+function saveInvoice(id){
+  try{
+    var o=DB.orders.find(function(x){return x.id===id;});if(!o)return;
+    var cfg=getPrintCfg();if(!cfg.store)cfg.store=localStorage.getItem("honghuStore")||"";if(!cfg.by)cfg.by=(CUR&&CUR.username)||"";
+    var html,label;
+    if(o.gid){ var l=DB.orders.filter(function(x){return x.gid===o.gid;}); html=buildMultiHTML(l,cfg); label=o.buyer+" 等"+l.length+"件"; }
+    else { html=buildInvoiceHTML(o,{cfg:cfg,autoprint:false}); label=orderName(o); }
+    if(window.honghuAPI&&window.honghuAPI.saveInvoice){
+      window.honghuAPI.saveInvoice({html:html,name:(cfg.prefix||"")+orderNo(o),format:"pdf",size:{w:210,h:297}}).then(function(p){ if(p)toast("✅ 电子单据已保存："+p); }).catch(function(e){ toast("保存失败："+((e&&e.message)||e),"err"); });
+    }else{
+      var w=window.open("","_blank","width=820,height=900");
+      if(w){ w.document.open();w.document.write(html);w.document.close(); toast("请在打印对话框选「另存为 PDF」"); }
+      else toast("弹窗被拦截，请允许后重试","err");
+    }
+  }catch(e){ toast("保存失败："+e.message,"err"); }
+}
 function orderAttach(id){
   var o=DB.orders.find(function(x){return x.id===id;});if(!o)return;
   openModal('<div class="modal-head"><h3>📎 附件 · '+esc(orderName(o))+'</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
@@ -3875,7 +3892,7 @@ function printOrder(id){
       </div></div>
       <div class="field"><div class="row">
         <div><label>订货电话（多个空格隔开）</label><input id="pr_phones" oninput="savePrintCfg()" value="${esc(cfg.phones)}" placeholder="130… 134…"></div>
-        <div><label>制单人</label><input id="pr_by" oninput="savePrintCfg()" value="${esc(cfg.by)}"></div>
+        <div><label>制单人（留空＝自动用开单人/账号持有人）</label><input id="pr_by" oninput="savePrintCfg()" value="${esc(cfg.by)}" placeholder="留空自动"></div>
       </div></div>
       <div class="field"><label>订货地址</label><input id="pr_addr" oninput="savePrintCfg()" value="${esc(cfg.addr)}" placeholder="公司/仓库地址"></div>
       <div class="field"><div class="row">
@@ -3900,7 +3917,7 @@ function printOrder(id){
       </div>
       <div class="field"><label>预览</label><div style="background:#e9eef5;border-radius:12px;padding:10px;overflow:auto"><iframe id="pr_preview" style="width:100%;height:520px;border:0;background:#fff;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.15)"></iframe></div></div>
     </div>
-    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-ghost" onclick="printPreview()">👁️ 刷新预览</button><select id="pr_fmt" style="padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px"><option value="pdf">PDF</option><option value="png">PNG 图片</option><option value="jpg">JPG 图片</option></select><button class="btn btn-ghost" onclick="exportInvoice()">💾 另存为</button><button class="btn btn-primary" onclick="doPrint('${o.id}')">🖨️ 开电子票据</button></div>`);
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-ghost" onclick="printPreview()">👁️ 刷新预览</button><select id="pr_fmt" style="padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px"><option value="pdf">PDF</option><option value="png">PNG 图片</option><option value="jpg">JPG 图片</option></select><button class="btn btn-ghost" onclick="exportInvoice()">💾 保存电子单据</button><button class="btn btn-primary" onclick="doPrint('${o.id}')">🖨️ 开电子票据</button></div>`);
   (()=>{printPreview();})();
 }
 function prChanged(){const v=$("#pr_paper").value;if($("#pr_custom"))$("#pr_custom").style.display=v==="CUSTOM"?"":"none";printPreview();}
@@ -3969,7 +3986,7 @@ function buildInvoiceHTML(o,opts){
       </tbody></table>
       <div class="tot"><span>产品合计：${money(gross)}</span><span>合计金额：${rmbUpper(orderPaid(o))}  ${money(orderPaid(o))}</span></div>
       <div class="fee">买家运费 ${money(buyerShip(o))} ｜ 平台扣点 ${money(o.comm||0)}${extra?" ｜ 增值服务费 "+money(extra):""} ｜ 运费成本 ${money(o.shipping||0)} ｜ 其他 ${money(o.other||0)} ｜ 退款 ${money(refund)} ｜ <b>净收入 ${money(net)}</b></div>
-      <div class="foot"><div class="fl">订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc(cfg.by)}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
+      <div class="foot"><div class="fl">制单人：${esc(cfg.by||o.seller||((ac||{}).holder)||(CUR&&CUR.username)||"")}　订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc(cfg.by||orders[0].seller||((DB.accounts.find(function(a){return a.id===orders[0].accountId;})||{}).holder)||(CUR&&CUR.username)||"")}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
     </div>`;
   } else {
     body=`
@@ -3985,7 +4002,7 @@ function buildInvoiceHTML(o,opts){
         <tr class="sumrow"><td></td><td>合计</td><td></td><td>${o.qty}</td><td></td><td>${money(gross)}</td><td></td></tr>
       </tbody></table>
       <div class="tot"><span>产品合计：${money(gross)}</span><span>合计金额：${rmbUpper(gross)}  ${money(gross)}</span></div>
-      <div class="foot"><div class="fl">订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc(cfg.by)}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
+      <div class="foot"><div class="fl">制单人：${esc(cfg.by||o.seller||((ac||{}).holder)||(CUR&&CUR.username)||"")}　订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc(cfg.by||orders[0].seller||((DB.accounts.find(function(a){return a.id===orders[0].accountId;})||{}).holder)||(CUR&&CUR.username)||"")}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
     </div>`;
   }
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(store)} ${esc(cfg.title||"单据")}</title><style>
