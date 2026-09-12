@@ -18,7 +18,7 @@
   --accent:#4f46e5;--accent-2:#0ea5e9;--green:#10b981;--red:#ef4444;--amber:#f59e0b;--violet:#8b5cf6;
   --shadow:0 12px 34px rgba(15,23,42,.09);--radius:16px;--radius-sm:10px;
 }
-*{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box;margin:0;padding:0}html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{height:100%}
 body{
   font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -2624,6 +2624,15 @@ function load(){
     d.users=d.users||[];
     d.customers=d.customers||[];
     d.savedAt=d.savedAt||0;
+    try{
+      d.customers=d.customers||[];
+      (d.orders||[]).forEach(function(o){
+        var _n=String(o.buyer||"").trim(); if(!_n)return;
+        var _ex=d.customers.find(function(x){return x.name===_n;});
+        if(!_ex){ d.customers.push({id:"c"+Math.random().toString(36).slice(2,9),name:_n,contact:o.contact||"",addr:o.addr||"",note:""}); }
+        else{ if(o.contact&&!_ex.contact)_ex.contact=o.contact; if(o.addr&&!_ex.addr)_ex.addr=o.addr; }
+      });
+    }catch(e){}
     (d.products||[]).forEach(function(p){ if(p&&p.variants&&p.variants.length){ var _s=0; p.variants.forEach(function(v){_s+=(+v.stock||0)}); if(_s>0)p.stock=_s; } });
     return d;
   }catch(e){const d=deepClone(DEFAULT);seed(d);return d;}
@@ -3172,8 +3181,8 @@ function buildMultiHTML(orders,cfg){
   const totQty=orders.reduce((s,o)=>s+o.qty,0);const totAmt=orders.reduce((s,o)=>s+orderPaid(o),0);
   let rows="";
   orders.forEach((o,i)=>{const p=DB.products.find(x=>x.id===o.productId);const unit=(p&&p.unit)||"个";rows+=`<tr><td>${i+1}</td><td>${esc(orderName(o))}</td><td>${esc(unit)}</td><td>${o.qty}</td><td>${numv(o.price)}</td><td>${money(oPrice(o))}</td><td>${esc(o.note||"")}</td></tr>`;});
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(store)} ${esc(title)}</title><style>
-    @page{size:A4;margin:10mm;}*{box-sizing:border-box;margin:0;padding:0}
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(store)} ${esc(title)}</title><style>
+    @page{size:A4;margin:10mm;}*{box-sizing:border-box;margin:0;padding:0}html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
     body{font-family:"SimSun","宋体","Microsoft YaHei",serif;color:#000;background:#fff;font-size:${fs}px}
     .s{padding:6px 8px}
     .co{text-align:center;font-size:${fs+11}px;font-weight:800;letter-spacing:3px;font-family:"Microsoft YaHei",sans-serif}
@@ -4299,9 +4308,9 @@ function buildInvoiceHTML(o,opts){
       <div class="foot"><div class="fl">订货电话：${esc(cfg.phones)}${cfg.qr?("　"+qrTag(noStr,56)):""}</div><div class="fr">制单人：${esc((typeof o!=="undefined"&&o.maker)||(CUR&&CUR.username)||cfg.by||((typeof o!=="undefined"&&o.seller)||(typeof orders!=="undefined"&&orders[0]&&orders[0].seller)||""))}</div><div class="fl">订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
     </div>`;
   }
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(store)} ${esc(cfg.title||"单据")}</title><style>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(store)} ${esc(cfg.title||"单据")}</title><style>
     @page{size:${size};margin:${label?4:10}mm;}
-    *{box-sizing:border-box;margin:0;padding:0}
+    *{box-sizing:border-box;margin:0;padding:0}html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
     body{font-family:"SimSun","宋体","Microsoft YaHei",serif;color:#000;background:#fff;font-size:${fs}px}
     .s{padding:6px 8px}
     .co{text-align:center;font-size:${fs+11}px;font-weight:800;letter-spacing:3px;font-family:"Microsoft YaHei",sans-serif}
@@ -4716,8 +4725,8 @@ function delPurchase(id){
 }
 function purchaseCsv(){return DB.purchases.map(x=>{const p=DB.products.find(y=>y.id===x.productId);return {日期:x.date,商品:p?p.name:"未知",数量:x.qty,采购单价:+x.unitCost,金额:+(x.qty*x.unitCost).toFixed(2),供应商:x.supplier||"",备注:x.note||""};});}
 
-function inventoryCsv(){return DB.products.map(p=>({SKU:p.sku,商品:p.name,品牌:p.brand||"",分类:p.category,成本价:+p.cost,售价:+p.price,库存:p.stock,安全库存:p.minStock,位置:p.location||"",货值:+(p.stock*p.cost).toFixed(2)}));}
-function ordersCsv(){const p=oF.p,a=oF.a,q=oF.q.trim().toLowerCase();let rows=DB.orders.filter(o=>canSee(o.accountId)&&(p==="all"||o.platformId===p)&&(a==="all"||o.accountId===a)&&(!q||[o.buyer,o.contact,o.note,orderName(o)].join(" ").toLowerCase().includes(q)));return rows.map(o=>{const net=orderNet(o),profit=net-orderCost(o),rf=o.refund;return {销售日期:o.date,平台:pmeta(o.platformId).name,账号:aname(o.accountId),商品:orderName(o),单价:+o.price,数量:o.qty,商品金额:+(o.qty*o.price).toFixed(2),买家运费:+(o.buyerShip||0).toFixed(2),实付:+(o.qty*o.price+(o.buyerShip||0)).toFixed(2),扣点:+o.comm||0,增值服务费:+orderExtra(o).toFixed(2),运费成本:+o.shipping||0,其他:+o.other||0,退款:+(rf&&rf.amount||0),净收入:+net.toFixed(2),预估利润:+profit.toFixed(2),买家:o.buyer,联系方式:o.contact||"",备注:o.note||"",状态:o.status,退款日期:rf&&rf.date||"",退款原因:rf&&rf.reason||""};});}
+function inventoryCsv(){return DB.products.map(p=>({SKU:p.sku,商品:p.name,品牌:p.brand||"",分类:p.category,成本价:+p.cost,售价:+p.price,库存:p.stock,安全库存:p.minStock,位置:p.location||"",货值:+(p.stock*p.cost).toFixed(2),条码:p.barcode||"",规格:(p.variants||[]).map(function(v){return v.name+"×"+v.stock;}).join(" / "),单位:(p.units||[]).map(function(u){return u.name+"="+u.factor;}).join(" / ")||(p.unit||"个")}));}
+function ordersCsv(){const p=oF.p,a=oF.a,q=oF.q.trim().toLowerCase();let rows=DB.orders.filter(o=>canSee(o.accountId)&&(p==="all"||o.platformId===p)&&(a==="all"||o.accountId===a)&&(!q||[o.buyer,o.contact,o.note,orderName(o)].join(" ").toLowerCase().includes(q)));return rows.map(o=>{const net=orderNet(o),profit=net-orderCost(o),rf=o.refund;return {销售日期:o.date,平台:pmeta(o.platformId).name,账号:aname(o.accountId),商品:orderName(o),单价:+o.price,数量:o.qty,商品金额:+(o.qty*o.price).toFixed(2),买家运费:+(o.buyerShip||0).toFixed(2),实付:+(o.qty*o.price+(o.buyerShip||0)).toFixed(2),扣点:+o.comm||0,增值服务费:+orderExtra(o).toFixed(2),运费成本:+o.shipping||0,其他:+o.other||0,退款:+(rf&&rf.amount||0),净收入:+net.toFixed(2),预估利润:+profit.toFixed(2),买家:o.buyer,联系方式:o.contact||"",备注:o.note||"",状态:o.status,退款日期:rf&&rf.date||"",退款原因:rf&&rf.reason||"",送货日期:o.deliverDate||"",送货地址:o.addr||"",计划收款日:o.planDue||"",制单人:o.maker||o.seller||"",到付:(o.cod?"是":""),临时商品:(o.isTemp?"是":"")};});}
 function expenseCsv(){const p=eF.p,a=eF.a;return DB.expenses.filter(e=>canSee(e.accountId)&&withinDate(e)&&(p==="all"||e.platformId===p)&&(a==="all"||e.accountId===a)).map(e=>({日期:e.date,平台:pmeta(e.platformId).name,账号:aname(e.accountId),分类:e.cat,金额:+e.amount,备注:e.note||""}));}
 function exportData(){
   const payload=JSON.stringify(DB,null,2);
@@ -4857,7 +4866,7 @@ function creditBillCsv(name,from,to){
 function printCreditBill(name,from,to){
   const orders=DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)&&String(o.date||"")>=from&&String(o.date||"")<=to).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
   const tSum=orders.reduce((s,o)=>s+orderPaid(o),0), rSum=orders.reduce((s,o)=>s+(+o.creditPaid||0),0);
-  var h='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(name)+' 账单</title><style>body{font-family:-apple-system,"Microsoft YaHei",sans-serif;padding:26px;color:#111}h2{margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #bbb;padding:8px 10px;font-size:13px;text-align:center}th{background:#f3f4f6}.sum{margin-top:14px;font-size:14px}@media print{.noprint{display:none}}</style></head><body>';
+  var h='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>'+esc(name)+' 账单</title><style>body{font-family:-apple-system,"Microsoft YaHei",sans-serif;padding:26px;color:#111}h2{margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #bbb;padding:8px 10px;font-size:13px;text-align:center}th{background:#f3f4f6}.sum{margin-top:14px;font-size:14px}@media print{.noprint{display:none}}</style></head><body>';
   h+='<h2>'+esc(name)+' · 挂账账单</h2><div style="color:#666;font-size:12px">期间：'+from+' ~ '+to+' ｜ 生成：'+new Date().toLocaleString("zh-CN")+'</div>';
   h+='<table><thead><tr><th>销售日期</th><th>商品</th><th>数量</th><th>应收</th><th>已收</th><th>未收</th></tr></thead><tbody>';
   h+=orders.length?orders.map(function(o){var rem=orderPaid(o)-(+o.creditPaid||0);return '<tr><td>'+esc(o.date)+'</td><td>'+esc(orderName(o))+'</td><td>'+(o.qty||0)+'</td><td>'+yuan(orderPaid(o))+'</td><td>'+yuan(o.creditPaid||0)+'</td><td>'+yuan(rem)+'</td></tr>';}).join(""):'<tr><td colspan="6">该期间无记录</td></tr>';
