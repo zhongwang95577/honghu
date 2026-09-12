@@ -2749,7 +2749,7 @@ function platformTotals(platformId,accountId){
   return {sale,order,exp,fees,cogs,refund,ship,net,profit};
 }
 function globalTotals(){
-  let sale=0,order=0,exp=0,fees=0,cogs=0,refund=0,ship=0,stockV=0;
+  let sale=0,order=0,exp=0,fees=0,cogs=0,refund=0,ship=0,stockV=0;var _seenOrders={};
   DB.orders.forEach(o=>{if(!withinDate(o))return;if(!canSee(o.accountId))return;sale+=orderPaid(o);if(!_seenOrders[o.gid||o.id]){_seenOrders[o.gid||o.id]=1;order++;}fees+=orderFees(o);cogs+=orderCost(o);refund+=orderRefund(o);ship+=buyerShip(o);});
   DB.expenses.forEach(e=>{if(!withinDate(e))return;if(!canSee(e.accountId))return;exp+=e.amount;});
   DB.products.forEach(p=>{stockV+=p.stock*p.cost;});
