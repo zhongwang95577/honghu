@@ -2923,6 +2923,7 @@ function biImport(){
     save();closeModal();render();toast("✅ 导入完成：新增 "+add+" 个，更新库存 "+upd+" 个");
   }catch(e){toast("导入失败："+e.message,"err");}
 }
+function pickBrandVal(){try{iF.brand="all";iF.page=1;renderInvTbl();}catch(e){}}
 function pickBrand(el){try{iF.brand=el.getAttribute("data-b")||"all";iF.page=1;renderInvTbl();}catch(e){}}
 function vInventory(){
   const total=DB.products.length;
@@ -2935,6 +2936,7 @@ function vInventory(){
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="scanInfo()">📱 扫码入库</button>${isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="openBulkImport()">📥 批量导入</button><button class="btn btn-ghost btn-sm" onclick="exportCsv(inventoryCsv(),'库存.csv')">⬇️ 导出</button><button class="btn btn-ghost btn-sm" onclick="manageCats()">🏷️ 类目/品牌</button><button class="btn btn-primary" onclick="openProductForm()">➕ 新增商品</button>`:''}</div>
   </div>
   <div class="filterbar">
+    ${(iF.brand&&iF.brand!=="all")?'<button class="btn btn-primary btn-sm" onclick="pickBrandVal()">← 返回品牌大类</button>':''}
     <input id="if_q" placeholder="🔍 搜索商品名 / SKU / 条码 / 品牌 / 位置" oninput="iF.q=this.value;renderInvTbl()" value="${esc(iF.q)}" style="flex:1;min-width:180px">
     <select id="if_brand" onchange="iF.brand=this.value;renderInvTbl()"><option value="all">全部品牌</option>${brands.map(b=>`<option value="${esc(b)}" ${iF.brand===b?"selected":""}>${esc(b)}</option>`).join("")}</select>
     <select id="if_cat" onchange="iF.cat=this.value;renderInvTbl()"><option value="all">全部类目</option>${cats.map(x=>`<option value="${esc(x)}" ${iF.cat===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
@@ -2950,14 +2952,15 @@ function renderInvTbl(){
   const el=document.getElementById("invTbl");if(!el)return;
   const q=iF.q.trim().toLowerCase();
   let rows=DB.products.slice();
-  if(iF.brand!=="all")rows=rows.filter(p=>(p.brand||"")===iF.brand);
+  if(iF.brand==="__none__")rows=rows.filter(p=>!p.brand);
+  else if(iF.brand&&iF.brand!=="all")rows=rows.filter(p=>(p.brand||"")===iF.brand);
   if(iF.cat!=="all")rows=rows.filter(p=>(p.category||"")===iF.cat);
   if(q)rows=rows.filter(p=>[p.name,p.sku,p.barcode,p.location,p.brand,p.category].join(" ").toLowerCase().includes(q));
   if(iF.brand==="all"&&!q){
-    var _bm={};DB.products.forEach(function(p){var b=(p.brand||"（未填品牌）");_bm[b]=_bm[b]||{n:0,s:0};_bm[b].n++;_bm[b].s+=(+p.stock||0);});
+    var _bm={};DB.products.forEach(function(p){var b=(p.brand||"__none__");_bm[b]=_bm[b]||{n:0,s:0};_bm[b].n++;_bm[b].s+=(+p.stock||0);});
     var _bk=Object.keys(_bm).sort();
     el.innerHTML='<div style="padding:12px 10px 6px;font-size:13px;color:var(--muted)">👆 按品牌查看：点一个品牌进入，看该品牌的产品（支持分页）</div>'
-      +'<div class="grid g-3">'+_bk.map(function(b){return '<div class="card" data-b="'+esc(b)+'" onclick="pickBrand(this)" style="cursor:pointer;padding:14px 16px"><div style="font-weight:700;font-size:15px">'+esc(b)+'</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+_bm[b].n+' 个商品 · 库存合计 '+_bm[b].s+'</div></div>';}).join("")+'</div>';
+      +'<div class="grid g-3">'+_bk.map(function(b){return '<div class="card" data-b="'+esc(b)+'" onclick="pickBrand(this)" style="cursor:pointer;padding:14px 16px"><div style="font-weight:700;font-size:15px">'+esc(b==='__none__'?'（未填品牌）':b)+'</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+_bm[b].n+' 个商品 · 库存合计 '+_bm[b].s+'</div></div>';}).join("")+'</div>';
     return;
   }
   var _ps=(iF.size||50);var _tot=rows.length;var _pages=Math.max(1,Math.ceil(_tot/_ps));
@@ -3696,6 +3699,14 @@ function saveOrderNew(printAfter){
       if(!_tp)stockAdj(p,obj.variantName,-effQty(obj));
       obj.seq=DB.orders.filter(function(x){return x.date===obj.date;}).length+1;
       var _nid=pid();if(!firstId)firstId=_nid;DB.orders.push(Object.assign({id:_nid},obj));
+      if(_tp&&obj.productName){
+        try{
+          var _nm=obj.productName.trim();
+          var _ex=DB.products.find(function(x){return (x.name||"").trim()===_nm;});
+          if(_ex){ if(+it.cost)_ex.cost=+it.cost; if(+it.price)_ex.price=+it.price; if(it.unit)_ex.unit=it.unit; logAct("临时商品并入库存(更新)",_nm); }
+          else{ DB.products.push({id:pid(),name:_nm,sku:"",barcode:"",category:"",brand:"",unit:it.unit||"个",cost:+it.cost||0,price:+it.price||0,stock:0,minStock:0,location:"",variants:[],units:[]}); logAct("临时商品并入库存(新增)",_nm); }
+        }catch(e){}
+      }
       made.push((_tp?obj.productName:p.name)+"×"+(+it.qty||1)); n++;
     });
     var ex=DB.customers.find(function(x){return x.name===buy;});
