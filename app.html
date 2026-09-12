@@ -3136,6 +3136,16 @@ function saveProduct(id){
   else{DB.products.push({id:pid(),...obj});logAct("新增商品",obj.name);toast("商品已添加");}
   save();closeModal();render();
 }
+function pickProdImgMore(inp){
+  try{
+    var f=(inp.files&&inp.files[0]);if(!f)return;
+    if(f.size>300*1024){toast("图片太大（≤300KB）","err");inp.value="";return;}
+    var t=(window._prodTarget?DB.products.find(function(x){return x.id===window._prodTarget;}):null);if(!t){toast("请先保存商品再追加图片","warn");inp.value="";return;}
+    var r=new FileReader();
+    r.onload=function(){ t.imgs=t.imgs||[]; t.imgs.push(String(r.result)); save(); toast("已追加图片（共 "+t.imgs.length+" 张）"); };
+    r.readAsDataURL(f);inp.value="";
+  }catch(e){toast("失败："+e.message,"err");}
+}
 function delProduct(id){
   if(!confirm("确定删除该商品？其关联订单记录将保留，但会显示为未知商品。"))return;
   DB.products=DB.products.filter(p=>p.id!==id);save();render();toast("商品已删除","warn");
@@ -3861,7 +3871,7 @@ function orderAttach(id){
   var o=DB.orders.find(function(x){return x.id===id;});if(!o)return;
   openModal('<div class="modal-head"><h3>📎 附件 · '+esc(orderName(o))+'</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
    +'<div class="modal-body">'
-   +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">可传截图/凭证（每张 ≤150KB，最多 4 张）。</div>'
+   +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">可传截图/凭证（每张 ≤150KB，最多 5 张）。</div>'
    +'<label class="btn btn-primary btn-sm" style="cursor:pointer;margin:0">📷 添加附件<input type="file" accept="image/*" style="display:none" onchange="attAdd(\''+id+'\',this)"></label>'
    +'<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">'
    +((o.att||[]).map(function(a,i){return '<div style="position:relative"><img src="'+a.data+'" onclick="viewAtt(\''+id+'\','+i+')" style="width:92px;height:92px;object-fit:cover;border-radius:10px;border:1px solid var(--border);cursor:pointer"><div class="icon-btn" style="position:absolute;top:-7px;right:-7px;background:#fff;color:var(--red);border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2)" onclick="attDel(\''+id+'\','+i+')">✕</div></div>';}).join("")||'<span style="color:var(--muted);font-size:12.5px">暂无附件</span>')
@@ -3873,7 +3883,8 @@ function attAdd(id,inp){
   var f=inp.files&&inp.files[0];if(!f)return;
   if(f.size>150*1024){toast("图片太大（≤150KB），请压缩或截图","err");inp.value="";return;}
   var o=DB.orders.find(function(x){return x.id===id;});if(!o)return;o.att=o.att||[];
-  if(o.att.length>=4){toast("最多 4 张","err");inp.value="";return;}
+  if(o.att.length>=5){toast("订单附件最多 5 张","err");inp.value="";return;}
+  
   var r=new FileReader();
   r.onload=function(){o.att.push({name:f.name,data:String(r.result)});logAct("添加附件",orderName(o));save();orderAttach(id);toast("已添加附件");};
   r.readAsDataURL(f);inp.value="";
@@ -3991,12 +4002,31 @@ function vDebts(){
     +'<td style="color:'+(rem<=0?'var(--muted)':'var(--red)')+';font-weight:700">'+yuan(rem)+'</td>'
     +'<td style="color:var(--muted)">'+esc(d.date||"")+'</td><td style="color:var(--muted)">'+esc(d.dueDate||"—")+'</td>'
     +'<td>'+(rem<=0?'<span class="badge green">已还清</span>':((d.paid||0)>0?'<span class="badge" style="background:#fde68a;color:#92400e">部分还</span>':'<span class="badge red">未还</span>'))+'</td>'
-    +'<td><div class="table-actions"><button class="btn btn-primary btn-sm" onclick="payDebt(\''+d.id+'\')">💰 还款</button><button class="btn btn-ghost btn-sm" data-n="'+esc(d.name||"")+'" onclick="showDebt(this)">📋 详情</button><button class="btn btn-ghost btn-sm" onclick="openDebtForm(\''+d.id+'\')">✏️ 编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delDebt(\''+d.id+'\')">🗑️ 删除</button></div></td></tr>';}).join("")
+    +'<td><div class="table-actions"><button class="btn btn-primary btn-sm" onclick="payDebt(\''+d.id+'\')">💰 还款</button><button class="btn btn-ghost btn-sm" data-n="'+esc(d.name||"")+'" onclick="showDebt(this)">📋 详情</button><button class="btn btn-ghost btn-sm" data-id="'+d.id+'" onclick="debtAttachById(this)">📎 凭证</button><button class="btn btn-ghost btn-sm" onclick="openDebtForm(\''+d.id+'\')">✏️ 编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delDebt(\''+d.id+'\')">🗑️ 删除</button></div></td></tr>';}).join("")
     :'<tr><td colspan="8" style="text-align:center;color:var(--muted)">还没有记录，点右上角「新增借款」</td></tr>';
   html+='</tbody></table></div>';
   return html;
 }
 function showDebt(el){try{debtDetail(el.getAttribute("data-n"));}catch(e){}}
+function debtAttachById(el){try{debtAttach(el.getAttribute("data-id"));}catch(e){}}
+function debtAttach(id){
+  var d=(DB.debts||[]).find(function(x){return x.id===id;});if(!d)return;
+  openModal('<div class="modal-head"><h3>📎 借款凭证 · '+esc(d.name||"")+'</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
+   +'<div class="modal-body"><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">可传借条 / 转账截图（每张 ≤150KB），作为证据留存</div>'
+   +'<label class="btn btn-primary btn-sm" style="cursor:pointer;margin:0">📷 添加图片<input type="file" accept="image/*" style="display:none" onchange="dattAdd(\''+id+'\',this)"></label>'
+   +'<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">'
+   +((d.att||[]).map(function(a,i){return '<div style="position:relative"><img src="'+a.data+'" onclick="viewDatt(\''+id+'\','+i+')" style="width:92px;height:92px;object-fit:cover;border-radius:10px;border:1px solid var(--border);cursor:pointer"><div class="icon-btn" style="position:absolute;top:-7px;right:-7px;background:#fff;color:var(--red);border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2)" onclick="dattDel(\''+id+'\','+i+')">✕</div></div>';}).join("")||'<span style="color:var(--muted);font-size:12.5px">暂无图片</span>')
+   +'</div></div><div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">完成</button></div>');
+}
+function dattAdd(id,inp){
+  var f=inp.files&&inp.files[0];if(!f)return;
+  if(f.size>150*1024){toast("图片太大（≤150KB），请压缩或截图","err");inp.value="";return;}
+  var d=(DB.debts||[]).find(function(x){return x.id===id;});if(!d)return;d.att=d.att||[];
+  
+  var r=new FileReader();r.onload=function(){d.att.push({name:f.name,data:String(r.result)});logAct("借款凭证上传",(d.name||"")+" "+f.name);save();debtAttach(id);toast("已添加上传");};r.readAsDataURL(f);inp.value="";
+}
+function dattDel(id,i){var d=(DB.debts||[]).find(function(x){return x.id===id;});if(!d||!d.att)return;d.att.splice(i,1);save();debtAttach(id);}
+function viewDatt(id,i){var d=(DB.debts||[]).find(function(x){return x.id===id;});if(!d||!d.att||!d.att[i])return;openModal('<div class="modal-head"><h3>📎 借款凭证</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body" style="text-align:center"><img src="'+d.att[i].data+'" style="max-width:100%;max-height:70vh;border-radius:10px"></div>');}
 function debtDetail(name){
   var list=(DB.debts||[]).filter(function(d){return d.name===name;});
   var tot=0,paid=0;list.forEach(function(d){tot+=(+d.amount||0);paid+=(+d.paid||0);});
@@ -4005,7 +4035,7 @@ function debtDetail(name){
   list.forEach(function(d){
     h+='<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:16px;font-weight:700">借款 ¥'+Number(d.amount||0).toFixed(2)+'</span><span style="font-size:12.5px;color:var(--muted)">借款日 '+esc(d.date||"")+(d.dueDate?('　约定还款 '+esc(d.dueDate)):'')+'</span></div>'
      +'<div style="font-size:13px;margin-top:5px">已还 <b style="color:var(--green)">'+yuan(d.paid||0)+'</b> · '+(((+d.amount||0)-(+d.paid||0))<=0?'<b style="color:var(--green)">已结清</b>':'未还 <b style="color:var(--red)">'+yuan((+d.amount||0)-(+d.paid||0))+'</b>')+(d.note?(' · '+esc(d.note)):'')+'</div>'
-     +((d.payments&&d.payments.length)?('<div style="margin-top:10px"><div style="font-size:13px;font-weight:700;margin-bottom:6px">💰 还款记录（每笔）</div><div class="table-wrap" style="padding:0"><table><thead><tr><th style="width:130px">还款日期</th><th>还款金额</th><th>备注</th></tr></thead><tbody>'+d.payments.map(function(p){return '<tr><td style="font-weight:700;font-size:13.5px">'+esc(p.date||"")+'</td><td style="color:var(--green);font-weight:700;font-size:14px">¥'+Number(p.amount||0).toFixed(2)+'</td><td style="color:var(--muted)">'+esc(p.note||"")+'</td></tr>';}).join("")+'</tbody></table></div></div>'):'')+'</div>';
+     +((d.payments&&d.payments.length)?('<div style="margin-top:10px"><div style="font-size:13px;font-weight:700;margin-bottom:6px">💰 还款记录（每笔）</div><div class="table-wrap" style="padding:0"><table><thead><tr><th style="width:130px">还款日期</th><th>还款金额</th><th>备注</th></tr></thead><tbody>'+d.payments.map(function(p){return '<tr><td style="font-weight:700;font-size:13.5px">'+esc(p.date||"")+'</td><td style="color:var(--green);font-weight:700;font-size:14px">¥'+Number(p.amount||0).toFixed(2)+'</td><td style="color:var(--muted)">'+esc(p.note||"")+'</td></tr>';}).join("")+'</tbody></table></div></div>'+((d.att&&d.att.length)?('<div style="margin-top:8px"><div style="font-size:13px;font-weight:700;margin-bottom:6px">📎 借款凭证</div>'+d.att.map(function(a,i){return '<img src="'+a.data+'" onclick="viewDatt(\''+d.id+'\','+i+')" style="width:78px;height:78px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-right:8px;cursor:pointer">';}).join("")+'</div>'):'')):'')+'</div>';
   });
   h+='</div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">关闭</button><button class="btn btn-primary" onclick="exportCsv(debtsCsvOne(\''+esc(name)+'\'),\'借还款明细.csv\')">⬇️ 导出此人</button></div>';
   openModal(h);
