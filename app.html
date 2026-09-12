@@ -3354,6 +3354,18 @@ function openOrderForm(id){
         <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="oiType" value="inv" checked onchange="oiRender()"> 库存商品（扣库存）</label>
         <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="oiType" value="temp" onchange="oiRender()"> 临时商品（免库存直接录）</label>
       </div></div>
+      <div class="field" style="margin-top:6px"><label>费用（整单，可选填）</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="f_cod"> 到付</label>
+          <div><label>客户付的运费¥</label><input id="f_buyerShip" type="number" step="0.01" value="0" style="width:96px"></div>
+          <div><label>我花的运费¥</label><input id="f_shipping" type="number" step="0.01" value="0" style="width:96px"></div>
+          <div><label>平台扣点率%</label><input id="f_commRate" type="number" step="0.01" value="0" style="width:86px"></div>
+          <div><label>平台扣点¥</label><input id="f_comm" type="number" step="0.01" value="0" style="width:96px"></div>
+          <div><label>增值服务率%</label><input id="f_extraRate" type="number" step="0.01" value="0" style="width:86px"></div>
+          <div><label>增值服务¥</label><input id="f_extra" type="number" step="0.01" value="0" style="width:96px"></div>
+          <div><label>其他费用¥</label><input id="f_other" type="number" step="0.01" value="0" style="width:96px"></div>
+        </div>
+      </div>
       <label style="font-size:13px;font-weight:700;margin-top:4px;display:block">🛒 商品明细（可多行）</label>
       <div class="table-wrap" style="padding:0;margin-top:6px"><table class="tbl-nowrap no-card">
         <thead><tr><th>编号</th><th style="min-width:150px">产品</th><th>总数量</th><th>单位</th><th>单价</th><th>金额</th><th>操作</th></tr></thead>
@@ -3370,11 +3382,27 @@ function openOrderForm(id){
     var setv=function(id,v){var e=document.getElementById(id);if(e)e.value=(v==null?"":v);};
     setv("f_buyer",f.buyer);setv("f_contact",f.contact);setv("f_date",f.date);setv("f_plandue",f.planDue);setv("f_deliver",f.deliverDate);
     setv("f_addr",f.addr);setv("f_note",f.note);setv("f_maker",f.maker||((CUR&&CUR.username)||""));
+    setv("f_buyerShip",f.buyerShip);setv("f_shipping",f.shipping);setv("f_commRate",f.commRate);setv("f_comm",f.comm);setv("f_extraRate",f.extraRate);setv("f_extra",f.extra);setv("f_other",f.other);
+    try{var _cb=document.getElementById("f_cod");if(_cb)_cb.checked=!!f.cod;}catch(e){}
     if(f.platformId&&document.getElementById("f_p")){document.getElementById("f_p").value=f.platformId;try{syncAcct("f_a","f_p");}catch(e){}}
     if(f.accountId&&document.getElementById("f_a"))document.getElementById("f_a").value=f.accountId;
     if(f.payMode==="credit"){var r=document.querySelector("input[name=pmode][value=credit]");if(r){r.checked=true;try{onPMode();}catch(e){}setv("f_ccus",f.creditCustomer);}}
-    _oi=g.map(function(x){return {pid:x.productId,name:x.productName||"",cost:(x.tempCost==null?"":x.tempCost),qty:x.qty,unit:x.orderUnit||"",price:x.price};});
+    var _isTemp=g.some(function(x){return !!x.isTemp;});
+    if(_isTemp){ var _rt=document.querySelector("input[name=oiType][value=temp]"); if(_rt){ _rt.checked=true; try{_rt.onchange();}catch(e){} } }
+    else { var _ri=document.querySelector("input[name=oiType][value=inv]"); if(_ri){ _ri.checked=true; try{_ri.onchange();}catch(e){} } }
+    _oi=g.map(function(x){return {pid:x.productId||"",name:x.productName||"",cost:(x.tempCost==null?"":x.tempCost),qty:x.qty,unit:x.orderUnit||"",price:x.price};});
     oiRender();
+    try{
+      var _sels=document.querySelectorAll("#oiBody select");
+      _oi.forEach(function(it,i){
+        if(!it.pid)return;
+        var s=_sels[i]; if(!s)return;
+        var has=false; for(var k=0;k<s.options.length;k++){ if(s.options[k].value===String(it.pid)){has=true;break;} }
+        if(!has){ var op=document.createElement("option"); op.value=it.pid; op.text=(it.name||"商品")+"（原商品）"; s.appendChild(op); }
+        s.value=String(it.pid);
+      });
+    }catch(e){}
+    try{ _oi.forEach(function(it){ it.pid=it.pid||""; }); }catch(e){}
     var t=document.querySelector("#modal .modal-head h3"); if(t)t.textContent="✏️ 编辑订单（"+g.length+" 件商品）";
     var b=document.querySelector("#modal .modal-foot .btn-primary"); if(b){b.textContent="保存修改";b.setAttribute("onclick","saveOrderNew()");}
   } }catch(e){} })();
@@ -3608,6 +3636,8 @@ function oiRender(){
   }).join("");
   oiRecalc();
 }
+function _N(id){var e=document.getElementById(id);return e?(+e.value||0):0;}
+function _C(id){var e=document.getElementById(id);return e?!!e.checked:false;}
 function saveOrderNew(printAfter){
   try{
     var buy=document.getElementById("f_buyer").value.trim();
@@ -3640,7 +3670,11 @@ function saveOrderNew(printAfter){
     items.forEach(function(it){
       var p=_tp?null:DB.products.find(function(x){return x.id===it.pid;});if(!_tp&&!p)return;
       var obj={platformId:plat,accountId:acct,productId:(_tp?"":it.pid),isTemp:!!_tp,productName:(_tp?(it.name||"").trim():""),variantName:"",orderUnit:it.unit||"",tempCost:(_tp?(+it.cost||0):0),
-        qty:(+it.qty||1)*oiFactor(it),price:+it.price||0,buyerShip:0,commRate:0,comm:0,extraRate:0,extra:0,shipping:0,other:0,refund:null,
+        qty:(+it.qty||1)*oiFactor(it),price:+it.price||0,refund:null,
+        buyerShip:(n===0?(_N("f_buyerShip")):0),shipping:(n===0?(_N("f_shipping")):0),
+        commRate:(n===0?(_N("f_commRate")):0),comm:(n===0?(_N("f_comm")):0),
+        extraRate:(n===0?(_N("f_extraRate")):0),extra:(n===0?(_N("f_extra")):0),other:(n===0?(_N("f_other")):0),
+        cod:(n===0?!!(_C("f_cod")):false),
         payMode:pm,creditCustomer:(pm==="credit"?ccn:""),creditDue:"",creditPaid:0,creditPayments:[],
         buyer:buy,contact:contact,note:note,addr:addr,deliverDate:deliver,planDue:plandue,date:date,status:"待发货",gid:gid,maker:((document.getElementById("f_maker")&&document.getElementById("f_maker").value.trim())||"")};
       obj.seller=(CUR&&CUR.username)?CUR.username:"";
