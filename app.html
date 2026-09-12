@@ -3216,7 +3216,7 @@ function renderOrderTbl(){
       h+='<div style="font-size:12px;color:var(--muted);margin-top:7px">买家：'+esc(o.buyer||"—")+(o.contact?('　'+esc(o.contact)):'')+'</div>';
       if(o.note) h+='<div style="font-size:11.5px;color:var(--muted);margin-top:3px">备注：'+esc(o.note)+'</div>';
       h+='<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">';
-      h+='<button class="btn btn-ghost btn-sm" onclick="printGroupOf(\''+o.id+'\')">🖨️ 打印</button>';
+      h+='<button class="btn btn-ghost btn-sm" onclick="printGroupOf(\''+o.id+'\')">🖨️ 开电子票据</button>';
       h+='<button class="btn btn-ghost btn-sm" onclick="openOrderForm(\''+o.id+'\')">✏️ 编辑</button>';
       h+='<button class="btn btn-ghost btn-sm" style="color:var(--amber)" onclick="returnGroup(\''+o.id+'\')">🔄 退货</button>';
       h+='<button class="btn btn-ghost btn-sm" onclick="orderAttach(\''+o.id+'\')">📎 附件</button>';
@@ -3244,7 +3244,7 @@ function renderOrderTbl(){
       '<td style="color:var(--muted);max-width:150px" title="'+esc(o.note||'')+'">'+esc(o.note||'—')+'</td>'+
       '<td><select class="status-sel" onchange="quickStatus(\''+o.id+'\',this.value)">'+['待发货','已发货','已完成','已退款','已退货','已换货'].map(function(s){return '<option '+(o.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></td>'+
       '<td><div class="table-actions">'+
-        '<div class="icon-btn" title="打印'+(arr.length>1?'（整单多行）':'面单')+'" style="color:var(--accent-2)" onclick="printGroupOf(\''+o.id+'\')">🖨️</div>'+
+        '<div class="icon-btn" title="开电子票据'+(arr.length>1?'（整单多行）':'面单')+'" style="color:var(--accent-2)" onclick="printGroupOf(\''+o.id+'\')">🖨️</div>'+
         '<div class="icon-btn edit" title="编辑" onclick="openOrderForm(\''+o.id+'\')">✏️</div>'+
         '<div class="icon-btn" title="退货" style="color:var(--amber)" onclick="returnGroup(\''+o.id+'\')">🔄</div>'+
         '<div class="icon-btn" title="附件" onclick="orderAttach(\''+o.id+'\')">📎</div>'+
@@ -3353,7 +3353,7 @@ function openOrderForm(id){
       <div style="text-align:right;margin-top:10px;font-size:14px">订单金额：<b id="oiTotal" style="color:var(--green)">¥0.00</b></div>
       <div class="field" style="margin-top:8px"><label>备注（打印时显示）</label><textarea id="f_note" placeholder="发货要求、安装时间、优惠说明等"></textarea></div>
       </div>
-      <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveOrderNew()">保存订单</button></div>`);
+      <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-ghost" onclick="saveOrderNew(true)" title="保存后立刻打开电子票据">🖨️ 保存并开票</button><button class="btn btn-primary" onclick="saveOrderNew()">保存订单</button></div>`);
   }
   (()=>{try{var d=$("#f_date");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);}catch(e){}try{if(document.getElementById("f_prod")){toggleRefund();autoRate(!id);onPType();if(typeof fillVariantSel==="function")fillVariantSel();}}catch(e){}try{onPMode();}catch(e){}try{var pd=$("#f_plandue");if(pd&&!pd.value)pd.value=new Date().toISOString().slice(0,10);}catch(e){}try{if(document.getElementById("oiBody"))oiRender();}catch(e){}})();
   if(!id){const lp=localStorage.getItem("honghuLastP"),la=localStorage.getItem("honghuLastA");if(lp&&$("#f_p")){$("#f_p").value=lp;syncAcct("f_a","f_p");}if(la&&$("#f_a")){$("#f_a").value=la;autoRate(!id);} }
@@ -3586,7 +3586,7 @@ function oiRender(){
   }).join("");
   oiRecalc();
 }
-function saveOrderNew(){
+function saveOrderNew(printAfter){
   try{
     var buy=document.getElementById("f_buyer").value.trim();
     if(!buy){toast("请填写客户名称","err");return;}
@@ -3607,7 +3607,7 @@ function saveOrderNew(){
     if(!items.length){toast(_tp?"请至少填写一个临时商品名称":"请至少添加一件商品","err");return;}
     if(items.some(function(it){return (+it.qty||0)<=0;})){toast("数量要大于 0","err");return;}
     if(items.some(function(it){return (+it.price||0)<0||(+it.price||0)>9999999;})){toast("单价不正确（不能为负或过大）","err");return;}
-    var n=0,made=[];var gid="g"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);if(items.length<2)gid="";
+    var n=0,made=[],firstId=null;var gid="g"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);if(items.length<2)gid="";
     items.forEach(function(it){
       var p=_tp?null:DB.products.find(function(x){return x.id===it.pid;});if(!_tp&&!p)return;
       var obj={platformId:plat,accountId:acct,productId:(_tp?"":it.pid),isTemp:!!_tp,productName:(_tp?(it.name||"").trim():""),variantName:"",orderUnit:it.unit||"",tempCost:(_tp?(+it.cost||0):0),
@@ -3617,7 +3617,7 @@ function saveOrderNew(){
       obj.seller=(CUR&&CUR.username)?CUR.username:"";
       if(!_tp)stockAdj(p,obj.variantName,-effQty(obj));
       obj.seq=DB.orders.filter(function(x){return x.date===obj.date;}).length+1;
-      DB.orders.push(Object.assign({id:pid()},obj));
+      var _nid=pid();if(!firstId)firstId=_nid;DB.orders.push(Object.assign({id:_nid},obj));
       made.push((_tp?obj.productName:p.name)+"×"+(+it.qty||1)); n++;
     });
     var ex=DB.customers.find(function(x){return x.name===buy;});
@@ -3625,6 +3625,7 @@ function saveOrderNew(){
     logAct("开单",buy+" · "+made.join("、"));
     save(); closeModal(); render();
     toast("✅ 已登记 "+n+" 件："+made.join("、"));
+    if(printAfter&&firstId){ setTimeout(function(){ try{ printGroupOf(firstId); }catch(e){} }, 300); }
   }catch(e){ toast("保存失败："+e.message,"err"); }
 }
 
@@ -3898,7 +3899,7 @@ function printOrder(id){
       </div>
       <div class="field"><label>预览</label><div style="background:#e9eef5;border-radius:12px;padding:10px;overflow:auto"><iframe id="pr_preview" style="width:100%;height:520px;border:0;background:#fff;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.15)"></iframe></div></div>
     </div>
-    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-ghost" onclick="printPreview()">👁️ 刷新预览</button><select id="pr_fmt" style="padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px"><option value="pdf">PDF</option><option value="png">PNG 图片</option><option value="jpg">JPG 图片</option></select><button class="btn btn-ghost" onclick="exportInvoice()">💾 另存为</button><button class="btn btn-primary" onclick="doPrint('${o.id}')">🖨️ 打印</button></div>`);
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-ghost" onclick="printPreview()">👁️ 刷新预览</button><select id="pr_fmt" style="padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px"><option value="pdf">PDF</option><option value="png">PNG 图片</option><option value="jpg">JPG 图片</option></select><button class="btn btn-ghost" onclick="exportInvoice()">💾 另存为</button><button class="btn btn-primary" onclick="doPrint('${o.id}')">🖨️ 开电子票据</button></div>`);
   (()=>{printPreview();})();
 }
 function prChanged(){const v=$("#pr_paper").value;if($("#pr_custom"))$("#pr_custom").style.display=v==="CUSTOM"?"":"none";printPreview();}
