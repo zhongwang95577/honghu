@@ -3144,6 +3144,7 @@ function printMulti(){
   const w=window.open("","_blank","width=820,height=900");
   if(!w){toast("打印窗口被拦截，请允许弹窗","err");return;}
   w.document.open();w.document.write(html);w.document.close();
+  try{setTimeout(function(){w.focus();w.print();},700);}catch(e){} try{setTimeout(function(){w.focus();w.print();},1600);}catch(e){}
 }
 function buildMultiHTML(orders,cfg){
   const fs=cfg.font||13;const store=cfg.store||"";const title=cfg.title||"销售单";
@@ -3178,7 +3179,7 @@ function buildMultiHTML(orders,cfg){
     </tbody></table>
     <div class="tot"><span>产品合计：${money(totAmt)}</span><span>合计金额：${rmbUpper(totAmt)}  ${money(totAmt)}</span></div>
     <div class="foot"><div>订货电话：${esc(cfg.phones)}</div><div class="fr">制单人：${esc(cfg.by)}</div><div>订货地址：${esc(cfg.addr)}</div><div class="fr">收货人(签字)：</div></div>
-  </div></body></html>`;
+  </div><style>@media print{.noprint{display:none!important}}</style><div class="noprint" style="position:fixed;top:12px;right:14px;display:flex;gap:8px;z-index:99"><button onclick="window.print()" style="padding:10px 18px;font-size:15px;font-weight:700;border:0;border-radius:10px;background:#2563eb;color:#fff;cursor:pointer">🖨️ 打印 / 存为 PDF</button><button onclick="window.close()" style="padding:10px 16px;font-size:15px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;cursor:pointer">✖ 关闭</button></div>${'<'+'script>function _dp(){try{window.focus();window.print();}catch(e){}}if(document.readyState==="complete")setTimeout(_dp,400);else window.addEventListener("load",function(){setTimeout(_dp,400);});</'+'script>'}</body></html>`;
 }
 function oPrice(o){return o.qty*o.price;}
 function renderOrderTbl(){
