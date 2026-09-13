@@ -3368,7 +3368,7 @@ function syncVarOne(){
       const v=st?(+st.value||0):0;
       const u=un?un.value:'对';
       if(u==='对'){ sp.textContent='= '+(Math.round(v*f*100)/100)+' '+ou; }
-      else{ sp.textContent='（按单只卖）'; }
+      else{ sp.textContent='（按只记库存）'; }
     });
   }catch(e){}
 }
