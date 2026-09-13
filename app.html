@@ -3074,6 +3074,7 @@ function openProdDetail(id){
       h+='<tr><td style="color:var(--muted)">成对成本 / 售价</td><td>'+yuan(p.pairCost)+' / '+yuan(p.pairPrice)+'</td></tr>';
       h+='<tr><td style="color:var(--muted)">单个成本 / 售价</td><td>'+yuan(p.oneCost)+' / '+yuan(p.onePrice)+'</td></tr>';
       h+='<tr><td style="color:var(--muted)">换算</td><td>1'+esc(p.unit||'对')+' = '+(+p.pairFactor||2)+' '+esc(p.oneUnit||'单只')+'</td></tr>';
+      var _f=(+p.pairFactor||2); h+='<tr><td style="color:var(--muted)">单个库存（自动）</td><td><b>'+(Math.round((+p.stock||0)*_f*100)/100)+'</b> '+esc(p.oneUnit||'单只')+'</td></tr>';
     }
     h+='</tbody></table>';
     if(p.variants&&p.variants.length){
@@ -3266,6 +3267,7 @@ function syncOnePrice(){
     if(pc&&oc&&pc.value!=="") oc.value=(+((+pc.value)/f).toFixed(2));
     if(pp&&op&&pp.value!=="") op.value=(+((+pp.value)/f).toFixed(2));
     if(typeof syncPairQty==="function")syncPairQty();
+    if(typeof syncPairStock==="function")syncPairStock();
   }catch(e){}
 }
 function openScanPick(target){
@@ -3319,11 +3321,23 @@ function closeScanPick(){
   try{ var ov=document.getElementById('scanOv'); if(ov)ov.remove(); }catch(e){}
 }
 function openScanPickVar(btn){ try{ var r=btn.closest('.varRow'); var inp=r?r.querySelector('.varCode'):null; if(inp)openScanPick(inp); else toast('找不到条码框','warn'); }catch(e){} }
+function syncPairStock(){
+  try{
+    const el=document.getElementById('pairStockHint'); if(!el)return;
+    const st=+(($("#f_stock")||{}).value)||0;
+    const f=+(((document.getElementById('f_pairFactor')||{}).value)||2)||2;
+    const u=(document.getElementById('f_unit')||{}).value||'对';
+    const ou=(document.getElementById('f_oneUnit')||{}).value||'单只';
+    const one=Math.round(st*f*100)/100;
+    el.innerHTML='当前库存 <b>'+(Math.round(st*100)/100)+'</b> '+esc(u)+' = <b>'+one+'</b> '+esc(ou)+'（自动换算，卖单个时按这个数）';
+  }catch(e){}
+}
 function onSetUnit(){try{
   var u=(document.getElementById("f_unit")||{}).value||"";
   var isSet=(["对","双","套","副","组"].indexOf(u)>=0);
   var pb=document.getElementById("pairBox"); if(pb)pb.style.display=isSet?"":"none";
   var bb=document.getElementById("basePriceBox"); if(bb)bb.style.display=isSet?"none":"";
+  if(typeof syncPairStock==="function")syncPairStock();
 }catch(e){}}
 function toggleMulti(on){try{var v=document.getElementById("varRows");var sec=v?v.closest(".field"):null;if(sec)sec.style.display=on?"":"none";}catch(e){}}
 function varRowsHtml(p){var vs=(p&&p.variants)||[];return vs.map(function(v){return '<div class="row varRow" style="margin-bottom:6px"><input class="varName" placeholder="规格名(黄光/白光)" value="'+(v.name||'')+'"><span style="display:flex;gap:4px;flex:1"><input class="varCode" placeholder="该规格条码" value="'+(v.barcode||'')+'" style="flex:1"><button type="button" class="icon-btn" onclick="openScanPickVar(this)" title="扫码自动填入">📷</button></span><input class="varStock" type="number" placeholder="库存(几对/几个)" value="'+(v.stock==null?'':v.stock)+'" oninput="syncProdStock()"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
@@ -3361,6 +3375,7 @@ function openProductForm(id){
         <div class="row"><div><label>成对成本¥</label><input id="f_pairCost" type="number" step="0.01" placeholder="一套/一对的成本" oninput="syncOnePrice()" value="${p.pairCost==null?'':p.pairCost}"></div><div><label>成对售价¥</label><input id="f_pairPrice" type="number" step="0.01" placeholder="一套/一对的售价" oninput="syncOnePrice()" value="${p.pairPrice==null?'':p.pairPrice}"></div></div>
         <div class="row" style="margin-top:6px"><div><label>单个成本¥</label><input id="f_oneCost" type="number" step="0.01" placeholder="单只的成本" value="${p.oneCost==null?'':p.oneCost}"></div><div><label>单个售价¥</label><input id="f_onePrice" type="number" step="0.01" placeholder="单只的售价" value="${p.onePrice==null?'':p.onePrice}"></div></div>
         <div class="row" style="margin-top:6px"><div><label>1对/套 = 多少只</label><input id="f_pairFactor" type="number" step="1" value="${p.pairFactor||2}" placeholder="如 1对=2只" oninput="syncOnePrice()"></div><div><label>单只单位名</label><input id="f_oneUnit" value="${esc(p.oneUnit||"单只")}" placeholder="如 单只/个"></div></div>
+        <div class="hint" id="pairStockHint">—</div>
         
       </div>
       <div class="field" style="display:none"><label>包装单位（整箱/拆零用；库存按基础单位计）</label><div class="hint">基础单位：<b>${(_editP&&_editP.unit)||"个"}</b>（换算=1）</div><div id="unitRows">${unitRowsHtml(_editP)}</div><button type="button" class="btn btn-ghost btn-sm" onclick="addUnitRow()">➕ 加包装单位</button></div>
@@ -3390,6 +3405,7 @@ function openProductForm(id){
         <div class="row"><div><label>成对成本¥</label><input id="f_pairCost" type="number" step="0.01" placeholder="一套/一对的成本" oninput="syncOnePrice()" value=""></div><div><label>成对售价¥</label><input id="f_pairPrice" type="number" step="0.01" placeholder="一套/一对的售价" oninput="syncOnePrice()" value=""></div></div>
         <div class="row" style="margin-top:6px"><div><label>单个成本¥</label><input id="f_oneCost" type="number" step="0.01" placeholder="单只的成本" value=""></div><div><label>单个售价¥</label><input id="f_onePrice" type="number" step="0.01" placeholder="单只的售价" value=""></div></div>
         <div class="row" style="margin-top:6px"><div><label>1对/套 = 多少只</label><input id="f_pairFactor" type="number" step="1" value="2" placeholder="如 1对=2只" oninput="syncOnePrice()"></div><div><label>单只单位名</label><input id="f_oneUnit" value="单只" placeholder="如 单只/个"></div></div>
+        <div class="hint" id="pairStockHint">—</div>
       </div>
       <div class="field"><div class="row">
         <div><label class="req">当前库存</label><input id="f_stock" type="number" value="0"></div>
