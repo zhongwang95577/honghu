@@ -3256,7 +3256,20 @@ function addBrand(){const v=$("#nb").value.trim();if(!v)return;if(!DB.brands.inc
 function rmBrand(i){DB.brands.splice(i,1);save();manageCats();}
 let _editP=null;
 function fillBasePrice(){try{var a=document.getElementById("f_bcost"),b=document.getElementById("f_bprice");var ca=document.getElementById("f_cost"),cb=document.getElementById("f_price");if(a&&ca&&!a.value)a.value=ca.value;if(b&&cb&&!b.value)b.value=cb.value;}catch(e){}}
-function syncProdStock(){try{var s=0;document.querySelectorAll("#varRows .varStock").forEach(function(i){s+=(+i.value||0)});var f=document.getElementById("f_stock");if(f)f.value=s;}catch(e){}}
+function syncProdStock(){try{
+  var base=(document.getElementById("f_unit")||{}).value||"个";
+  var isSet=(["对","双","套","副","组"].indexOf(base)>=0);
+  var fac=+(((document.getElementById("f_pairFactor")||{}).value)||2)||2;
+  var s=0;
+  document.querySelectorAll("#varRows .varRow").forEach(function(r){
+    var st=r.querySelector(".varStock"); var un=r.querySelector(".varUnit");
+    var v=st?(+st.value||0):0; var u=un?un.value:"对";
+    if(isSet){ s += (u==="对"? v : v/fac); }
+    else{ s += (u==="对"? v*fac : v); }
+  });
+  s=Math.round(s*100)/100;
+  var f=document.getElementById("f_stock"); if(f)f.value=s;
+}catch(e){}}
 function syncPairQty(){try{var f=+((document.getElementById("f_pairFactor")||{}).value||2)||2;var pq=document.getElementById("f_pairQty"),oq=document.getElementById("f_oneQty");if(pq&&oq&&pq.value!=="")oq.value=(+pq.value*f);}catch(e){}}
 function varQtySync(el){try{var r=(el&&el.closest)?el.closest(".varRow"):null;if(!r)return;var f=+((document.getElementById("f_pairFactor")||{}).value||2)||2;var sq=r.querySelector(".varSpq");if(sq&&el.value!=="")sq.value=(+el.value*f);}catch(e){}}
 function syncOnePrice(){
@@ -3268,7 +3281,9 @@ function syncOnePrice(){
     if(pp&&op&&pp.value!=="") op.value=(+((+pp.value)/f).toFixed(2));
     if(typeof syncPairQty==="function")syncPairQty();
     if(typeof syncPairStock==="function")syncPairStock();
-    if(typeof syncVarOne==="function")syncVarOne();
+    try{ [].slice.call(document.querySelectorAll("#varRows .varRow")).forEach(function(r){ var un=r.querySelector(".varUnit"); if(un&&!un.getAttribute("data-init")){ un.value=isSet?"对":"单只"; un.setAttribute("data-init","1"); } }); }catch(e){}
+  if(typeof syncVarOne==="function")syncVarOne();
+  try{ [].slice.call(document.querySelectorAll("#varRows .varRow")).forEach(function(r){ var un=r.querySelector(".varUnit"); if(un&&!un.getAttribute("data-init")){ un.value=isSet?"对":"单只"; un.setAttribute("data-init","1"); } }); }catch(e){}
   if(typeof syncVarOne==="function")syncVarOne();
   }catch(e){}
 }
@@ -3328,9 +3343,11 @@ function syncVarOne(){
     const f=+(((document.getElementById('f_pairFactor')||{}).value)||2)||2;
     const ou=(document.getElementById('f_oneUnit')||{}).value||'单只';
     [].slice.call(document.querySelectorAll('#varRows .varRow')).forEach(function(r){
-      const st=r.querySelector('.varStock'); const sp=r.querySelector('.varOne'); if(!sp)return;
+      const st=r.querySelector('.varStock'); const sp=r.querySelector('.varOne'); const un=r.querySelector('.varUnit'); if(!sp)return;
       const v=st?(+st.value||0):0;
-      sp.textContent='= '+(Math.round(v*f*100)/100)+' '+ou;
+      const u=un?un.value:'对';
+      if(u==='对'){ sp.textContent='= '+(Math.round(v*f*100)/100)+' '+ou; }
+      else{ sp.textContent='（按单只卖）'; }
     });
   }catch(e){}
 }
@@ -3343,7 +3360,8 @@ function syncPairStock(){
     const ou=(document.getElementById('f_oneUnit')||{}).value||'单只';
     const one=Math.round(st*f*100)/100;
     el.innerHTML='当前库存 <b>'+(Math.round(st*100)/100)+'</b> '+esc(u)+' = <b>'+one+'</b> '+esc(ou)+'（自动换算，卖单个时按这个数）';
-    if(typeof syncVarOne==="function")syncVarOne();
+    try{ [].slice.call(document.querySelectorAll("#varRows .varRow")).forEach(function(r){ var un=r.querySelector(".varUnit"); if(un&&!un.getAttribute("data-init")){ un.value=isSet?"对":"单只"; un.setAttribute("data-init","1"); } }); }catch(e){}
+  if(typeof syncVarOne==="function")syncVarOne();
   }catch(e){}
 }
 function onSetUnit(){try{
@@ -3352,11 +3370,12 @@ function onSetUnit(){try{
   var pb=document.getElementById("pairBox"); if(pb)pb.style.display=isSet?"":"none";
   var bb=document.getElementById("basePriceBox"); if(bb)bb.style.display=isSet?"none":"";
   if(typeof syncPairStock==="function")syncPairStock();
+  try{ [].slice.call(document.querySelectorAll("#varRows .varRow")).forEach(function(r){ var un=r.querySelector(".varUnit"); if(un&&!un.getAttribute("data-init")){ un.value=isSet?"对":"单只"; un.setAttribute("data-init","1"); } }); }catch(e){}
   if(typeof syncVarOne==="function")syncVarOne();
 }catch(e){}}
 function toggleMulti(on){try{var v=document.getElementById("varRows");var sec=v?v.closest(".field"):null;if(sec)sec.style.display=on?"":"none";}catch(e){}}
-function varRowsHtml(p){var vs=(p&&p.variants)||[];return vs.map(function(v){return '<div class="row varRow" style="margin-bottom:6px"><input class="varName" placeholder="规格名(黄光/白光)" value="'+(v.name||'')+'"><span style="display:flex;gap:4px;flex:1"><input class="varCode" placeholder="该规格条码" value="'+(v.barcode||'')+'" style="flex:1"><button type="button" class="icon-btn" onclick="openScanPickVar(this)" title="扫码自动填入">📷</button></span><input class="varStock" type="number" placeholder="库存(几对/几个)" value="'+(v.stock==null?'':v.stock)+'" oninput="syncProdStock();syncVarOne()"><span class="varOne" style="color:var(--muted);font-size:12px;white-space:nowrap">—</span><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
-function addVarRow(){var b=document.getElementById("varRows");if(!b)return;var d=document.createElement("div");d.className="row varRow";d.style.marginBottom="6px";d.innerHTML='<input class="varName" placeholder="规格名(黄光/白光)"><span style="display:flex;gap:4px;flex:1"><input class="varCode" placeholder="该规格条码" style="flex:1"><button type="button" class="icon-btn" onclick="openScanPickVar(this)" title="扫码自动填入">📷</button></span><input class="varStock" type="number" placeholder="库存(几对/几个)" oninput="syncProdStock();syncVarOne()"><span class="varOne" style="color:var(--muted);font-size:12px;white-space:nowrap">—</span><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span>';b.appendChild(d);}
+function varRowsHtml(p){var vs=(p&&p.variants)||[];return vs.map(function(v){return '<div class="row varRow" style="margin-bottom:6px"><input class="varName" placeholder="规格名(黄光/白光)" value="'+(v.name||'')+'"><span style="display:flex;gap:4px;flex:1"><input class="varCode" placeholder="该规格条码" value="'+(v.barcode||'')+'" style="flex:1"><button type="button" class="icon-btn" onclick="openScanPickVar(this)" title="扫码自动填入">📷</button></span><select class="varUnit" style="max-width:96px" onchange="syncVarOne();syncProdStock()"><option value="对">按对</option><option value="单只">按单只</option></select><input class="varStock" type="number" placeholder="库存" value="'+(v.stock==null?'':v.stock)+'" oninput="syncProdStock();syncVarOne()"><span class="varOne" style="color:var(--muted);font-size:12px;white-space:nowrap">—</span><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
+function addVarRow(){var b=document.getElementById("varRows");if(!b)return;var d=document.createElement("div");d.className="row varRow";d.style.marginBottom="6px";d.innerHTML='<input class="varName" placeholder="规格名(黄光/白光)"><span style="display:flex;gap:4px;flex:1"><input class="varCode" placeholder="该规格条码" style="flex:1"><button type="button" class="icon-btn" onclick="openScanPickVar(this)" title="扫码自动填入">📷</button></span><select class="varUnit" style="max-width:96px" onchange="syncVarOne();syncProdStock()"><option value="对">按对</option><option value="单只">按单只</option></select><input class="varStock" type="number" placeholder="库存" oninput="syncProdStock();syncVarOne()"><span class="varOne" style="color:var(--muted);font-size:12px;white-space:nowrap">—</span><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span>';b.appendChild(d);}
 function unitRowsHtml(p){var us=(p&&p.units)||[];return us.map(function(u){return '<div class="row unitRow" style="margin-bottom:6px"><input class="unitName" placeholder="单位名(对/箱)" value="'+(u.name||'')+'"><input class="unitFactor" type="number" placeholder="1单位=多少个基础单位" value="'+(u.factor||'')+'"><input class="unitPrice" type="number" placeholder="该单位售价" value="'+(u.price==null?'':u.price)+'"><input class="unitCost" type="number" placeholder="该单位成本" value="'+(u.cost==null?'':u.cost)+'"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span></div>';}).join("");}
 function addUnitRow(){var b=document.getElementById("unitRows");if(!b)return;var d=document.createElement("div");d.className="row unitRow";d.style.marginBottom="6px";d.innerHTML='<input class="unitName" placeholder="单位名(对/箱)"><input class="unitFactor" type="number" placeholder="1单位=多少个基础单位"><input class="unitPrice" type="number" placeholder="该单位售价"><input class="unitCost" type="number" placeholder="该单位成本"><span class="icon-btn" style="color:var(--red)" onclick="this.parentNode.remove()">×</span>';b.appendChild(d);}
 function openProductForm(id){
