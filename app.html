@@ -2998,8 +2998,21 @@ function renderInvTbl(){
     var st=iF.sort||"group";
     var S=function(x){ return (x==null?"":String(x)); };
     var cmp=function(a,b){ return S(a).localeCompare(S(b),"zh-Hans-CN"); };
-    if(st==="group"){ rows.sort(function(a,b){ var x=(S(a.brand)||"\uffff")+" "+S(a.category)+" "+S(a.name); var y=(S(b.brand)||"\uffff")+" "+S(b.category)+" "+S(b.name); return x.localeCompare(y,"zh-Hans-CN"); }); }
-    else if(st==="name"){ rows.sort(function(a,b){ return cmp(a.name,b.name); }); }
+    var numOf=function(s){ var m=String(s==null?"":s).replace(/[０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-65248);}).match(/[0-9]+(\.[0-9]+)?/); return m?parseFloat(m[0]):null; };
+    var nameCmp=function(a,b){
+      var na=numOf(a&&a.name), nb=numOf(b&&b.name);
+      if(na!=null&&nb!=null){ if(na!==nb) return na-nb; return S(a.name).localeCompare(S(b.name),"zh-Hans-CN"); }
+      if(na!=null) return -1;
+      if(nb!=null) return 1;
+      return S(a&&a.name).localeCompare(S(b&&b.name),"zh-Hans-CN");
+    };
+    if(st==="group"){ rows.sort(function(a,b){
+      var g=function(p){ return (S(p.brand)||"\uffff")+" "+S(p.category); };
+      var ga=g(a), gb=g(b);
+      if(ga!==gb){ var r=ga.localeCompare(gb,"zh-Hans-CN"); if(r) return r; }
+      return nameCmp(a,b);
+    }); }
+    else if(st==="name"){ rows.sort(nameCmp); }
     else if(st==="stockDesc"){ rows.sort(function(a,b){ return (+b.stock||0)-(+a.stock||0); }); }
     else if(st==="stockAsc"){ rows.sort(function(a,b){ return (+a.stock||0)-(+b.stock||0); }); }
     else if(st==="priceDesc"){ rows.sort(function(a,b){ return (+b.price||0)-(+a.price||0); }); }
