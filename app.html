@@ -2948,14 +2948,14 @@ function vInventory(){
     ${(iF.brand&&iF.brand!=="all")?'<button class="btn btn-primary btn-sm" onclick="pickBrandVal()">← 返回品牌大类</button>':''}
     <input id="if_q" placeholder="🔍 搜索商品名 / 类目（支持模糊，如 双排、三十寸）" oninput="iF.q=this.value;renderInvTbl()" value="${esc(iF.q)}" style="flex:1;min-width:180px">
     <select id="if_brand" onchange="iF.brand=this.value;renderInvTbl()"><option value="all">全部品牌</option>${brands.map(b=>`<option value="${esc(b)}" ${iF.brand===b?"selected":""}>${esc(b)}</option>`).join("")}</select>
-    <select id="if_cat" onchange="iF.cat=this.value;renderInvTbl()"><option value="all">全部类目</option>${cats.map(x=>`<option value="${esc(x)}" ${iF.cat===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
-    <button class="btn btn-ghost btn-sm" onclick="iF={q:'',brand:'all',cat:'all'};render()">♻️ 重置</button>
+    <select id="if_cat" onchange="iF.cat=this.value;renderInvTbl()"><option value="all">全部类目</option>${cats.map(x=>`<option value="${esc(x)}" ${iF.cat===x?"selected":""}>${esc(x)}</option>`).join("")}</select><select id="if_sort" onchange="iF.sort=this.value;iF.page=1;renderInvTbl()"><option value="group" ${iF.sort==="group"?"selected":""}>排序：品牌+类目+名称</option><option value="name" ${iF.sort==="name"?"selected":""}>排序：名称</option><option value="stockDesc" ${iF.sort==="stockDesc"?"selected":""}>排序：库存 多→少</option><option value="stockAsc" ${iF.sort==="stockAsc"?"selected":""}>排序：库存 少→多</option><option value="priceDesc" ${iF.sort==="priceDesc"?"selected":""}>排序：售价 高→低</option><option value="priceAsc" ${iF.sort==="priceAsc"?"selected":""}>排序：售价 低→高</option></select>
+    <button class="btn btn-ghost btn-sm" onclick="iF={q:'',brand:'all',cat:'all',sort:iF.sort||'group'};render()">♻️ 重置</button>
   </div>
   <div id="invTbl"></div>`;
   setTimeout(renderInvTbl,0);
   return html;
 }
-let iF={q:"",brand:"all",cat:"all",page:1,size:50};
+let iF={q:"",brand:"all",cat:"all",page:1,size:50,sort:"group"};
 let _prodImg="";
 var _CNMAP={零:'0',〇:'0',一:'1',二:'2',两:'2',三:'3',四:'4',五:'5',六:'6',七:'7',八:'8',九:'9'};
 function numNorm(s){
@@ -2993,6 +2993,18 @@ function renderInvTbl(){
       +'<div class="grid g-3">'+_bk.map(function(b){return '<div class="card" data-b="'+esc(b)+'" onclick="pickBrand(this)" style="cursor:pointer;padding:14px 16px"><div style="font-weight:700;font-size:15px">'+esc(b==='__none__'?'（未填品牌）':b)+'</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+_bm[b].n+' 个商品 · 库存合计 '+_bm[b].s+'</div></div>';}).join("")+'</div>';
     return;
   }
+  // 排序
+  (function(){
+    var st=iF.sort||"group";
+    var S=function(x){ return (x==null?"":String(x)); };
+    var cmp=function(a,b){ return S(a).localeCompare(S(b),"zh-Hans-CN"); };
+    if(st==="group"){ rows.sort(function(a,b){ var x=(S(a.brand)||"\uffff")+" "+S(a.category)+" "+S(a.name); var y=(S(b.brand)||"\uffff")+" "+S(b.category)+" "+S(b.name); return x.localeCompare(y,"zh-Hans-CN"); }); }
+    else if(st==="name"){ rows.sort(function(a,b){ return cmp(a.name,b.name); }); }
+    else if(st==="stockDesc"){ rows.sort(function(a,b){ return (+b.stock||0)-(+a.stock||0); }); }
+    else if(st==="stockAsc"){ rows.sort(function(a,b){ return (+a.stock||0)-(+b.stock||0); }); }
+    else if(st==="priceDesc"){ rows.sort(function(a,b){ return (+b.price||0)-(+a.price||0); }); }
+    else if(st==="priceAsc"){ rows.sort(function(a,b){ return (+a.price||0)-(+b.price||0); }); }
+  })();
   var _ps=(iF.size||50);var _tot=rows.length;var _pages=Math.max(1,Math.ceil(_tot/_ps));
   if(!iF.page||iF.page<1)iF.page=1; if(iF.page>_pages)iF.page=_pages;
   var _start=(iF.page-1)*_ps; rows=rows.slice(_start,_start+_ps);
