@@ -4081,8 +4081,20 @@ function debtDetail(name){
   h+='</div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">关闭</button><button class="btn btn-primary" onclick="exportCsv(debtsCsvOne(\''+esc(name)+'\'),\'借还款明细.csv\')">⬇️ 导出此人</button></div>';
   openModal(h);
 }
-function debtsCsvOne(name){return (DB.debts||[]).filter(function(d){return d.name===name;}).map(function(d){return {借款人:d.name,联系方式:d.contact||"",借款金额:+d.amount||0,已还:+(d.paid||0),未还:((+d.amount||0)-(+d.paid||0)),借款日:d.date||"",约定还款日:d.dueDate||"",备注:d.note||"",还款记录:(d.payments||[]).map(function(p){return (p.date||"")+"¥"+Number(p.amount||0).toFixed(2);}).join(" | ")};});}
-function debtsCsv(){return (DB.debts||[]).map(function(d){return {借款人:d.name,联系方式:d.contact||"",借款金额:+d.amount||0,已还:+(d.paid||0),未还:((+d.amount||0)-(+d.paid||0)),借款日:d.date||"",约定还款日:d.dueDate||"",状态:((+d.amount||0)-(+d.paid||0))<=0?"已还清":((d.paid||0)>0?"部分还":"未还"),还款记录:(d.payments||[]).map(function(p){return (p.date||"")+"还"+Number(p.amount||0).toFixed(2);}).join(" | "),备注:d.note||""};});}
+function _debtsRows(list){
+  var out=[];
+  (list||[]).forEach(function(d){
+    var amt=+d.amount||0, paid=+d.paid||0, owe=amt-paid;
+    var st=owe<=0?"已还清":(paid>0?"部分还":"未还");
+    var ps=(d.payments||[]).slice();
+    function mk(idx,dt,am,nt,left){return {借款人:d.name,联系方式:d.contact||"",借款金额:amt,已还:paid,未还:owe,借款日:d.date||"",约定还款日:d.dueDate||"",状态:st,分期序号:idx,还款日期:dt,还款金额:am,还款备注:nt,还款后剩余:left,备注:d.note||""};}
+    if(!ps.length){ out.push(mk("","","","",owe)); }
+    else{ var left=amt; ps.forEach(function(p,i){ left=left-(+p.amount||0); out.push(mk((i+1)+"/"+ps.length, p.date||"", (+p.amount||0), p.note||"", left)); }); }
+  });
+  return out;
+}
+function debtsCsvOne(name){ return _debtsRows((DB.debts||[]).filter(function(d){return d.name===name;})); }
+function debtsCsv(){ return _debtsRows(DB.debts||[]); }
 function openDebtForm(id){
   var d=id?((DB.debts||[]).find(function(x){return x.id===id;})||{}):{};
   openModal('<div class="modal-head"><h3>'+(id?'✏️ 编辑借款':'➕ 新增借款')+'</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
