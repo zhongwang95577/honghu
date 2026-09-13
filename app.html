@@ -2946,7 +2946,7 @@ function vInventory(){
   </div>
   <div class="filterbar">
     ${(iF.brand&&iF.brand!=="all")?'<button class="btn btn-primary btn-sm" onclick="pickBrandVal()">← 返回品牌大类</button>':''}
-    <input id="if_q" placeholder="🔍 搜索商品名 / SKU / 条码 / 品牌 / 位置" oninput="iF.q=this.value;renderInvTbl()" value="${esc(iF.q)}" style="flex:1;min-width:180px">
+    <input id="if_q" placeholder="🔍 搜索商品名 / 类目（支持模糊，如 双排、三十寸）" oninput="iF.q=this.value;renderInvTbl()" value="${esc(iF.q)}" style="flex:1;min-width:180px">
     <select id="if_brand" onchange="iF.brand=this.value;renderInvTbl()"><option value="all">全部品牌</option>${brands.map(b=>`<option value="${esc(b)}" ${iF.brand===b?"selected":""}>${esc(b)}</option>`).join("")}</select>
     <select id="if_cat" onchange="iF.cat=this.value;renderInvTbl()"><option value="all">全部类目</option>${cats.map(x=>`<option value="${esc(x)}" ${iF.cat===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
     <button class="btn btn-ghost btn-sm" onclick="iF={q:'',brand:'all',cat:'all'};render()">♻️ 重置</button>
@@ -2957,6 +2957,27 @@ function vInventory(){
 }
 let iF={q:"",brand:"all",cat:"all",page:1,size:50};
 let _prodImg="";
+var _CNMAP={零:'0',〇:'0',一:'1',二:'2',两:'2',三:'3',四:'4',五:'5',六:'6',七:'7',八:'8',九:'9'};
+function numNorm(s){
+  s=String(s==null?'':s);
+  s=s.replace(/[０-９]/g,function(ch){ return String.fromCharCode(ch.charCodeAt(0)-65248); });
+  s=s.replace(/[零〇一二两三四五六七八九十]+/g,function(w){
+    if(w.indexOf('十')<0){ return w.split('').map(function(x){return _CNMAP[x]||x;}).join(''); }
+    var m=w.match(/^(.*?)十(.*)$/); if(!m) return w;
+    var a=m[1]?(_CNMAP[m[1]]||m[1]):'1'; var b=m[2]?(_CNMAP[m[2]]||m[2]):'0';
+    return String((parseInt(a,10)||1)*10+(parseInt(b,10)||0));
+  });
+  return s;
+}
+function kw(s){ return numNorm(String(s==null?'':s).toLowerCase()).replace(/[\s\u3000]+/g,''); }
+function kwHit(hay, q){
+  try{
+    var parts=String(q==null?'':q).trim().split(/[\s\u3000]+/).filter(Boolean);
+    if(!parts.length) return true;
+    var H=kw(hay);
+    return parts.every(function(p){ return H.indexOf(kw(p))>=0; });
+  }catch(e){ return true; }
+}
 function renderInvTbl(){
   const el=document.getElementById("invTbl");if(!el)return;
   const q=iF.q.trim().toLowerCase();
@@ -2964,7 +2985,7 @@ function renderInvTbl(){
   if(iF.brand==="__none__")rows=rows.filter(p=>!p.brand);
   else if(iF.brand&&iF.brand!=="all")rows=rows.filter(p=>(p.brand||"")===iF.brand);
   if(iF.cat!=="all")rows=rows.filter(p=>(p.category||"")===iF.cat);
-  if(q)rows=rows.filter(p=>[p.name,p.sku,p.barcode,p.location,p.brand,p.category].join(" ").toLowerCase().includes(q));
+  if(q)rows=rows.filter(p=>kwHit((p.name||"")+" "+(p.category||""),iF.q));
   if(iF.brand==="all"&&(!iF.cat||iF.cat==="all")&&!q){
     var _bm={};DB.products.forEach(function(p){var b=(p.brand||"__none__");_bm[b]=_bm[b]||{n:0,s:0};_bm[b].n++;_bm[b].s+=(+p.stock||0);});
     var _bk=Object.keys(_bm).sort();
@@ -3113,7 +3134,7 @@ function renderMovePick(){
     const q=((document.getElementById('sm_q')||{}).value||'').trim().toLowerCase();
     const box=document.getElementById('sm_list'); if(!box)return;
     let ps=(DB.products||[]).slice();
-    if(q) ps=ps.filter(function(p){ return (((p.name||'')+' '+(p.sku||'')+' '+(p.barcode||'')+' '+(p.brand||'')+' '+(p.category||''))).toLowerCase().indexOf(q)>=0; });
+    if(q) ps=ps.filter(function(p){ return kwHit((p.name||'')+' '+(p.category||''),q); });
     const shown=ps.slice(0,60);
     box.innerHTML=shown.length?shown.map(function(p){
       return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:11px;margin-bottom:6px;background:var(--bg-2);cursor:pointer" onclick="pickMoveProd(\''+p.id+'\')">'
@@ -3199,7 +3220,7 @@ function renderCustPick(){
   try{
     const q=((document.getElementById('custQ')||{}).value||'').trim().toLowerCase();
     const box=document.getElementById('custList2'); if(!box)return;
-    const cs=(DB.customers||[]).filter(function(x){ return !q || (x.name||'').toLowerCase().indexOf(q)>=0 || (x.contact||'').toLowerCase().indexOf(q)>=0; });
+    const cs=(DB.customers||[]).filter(function(x){ return !q || kwHit((x.name||'')+' '+(x.contact||''),q); });
     box.innerHTML=cs.length?cs.map(function(x,i){ return '<div style="padding:11px 12px;border:1px solid var(--border);border-radius:11px;margin-bottom:7px;background:var(--bg-2);cursor:pointer" onclick="pickCustName(\''+esc(x.name).replace(/'/g,'')+'\')"><b>'+esc(x.name)+'</b>'+(x.contact?(' <span style="color:var(--muted);font-size:12px">'+esc(x.contact)+'</span>'):'')+'</div>'; }).join(''):'<div class="hint">没有匹配的客户</div>';
   }catch(e){}
 }
@@ -3558,7 +3579,7 @@ function renderOrderTbl(){
   rows=rows.filter(o=>canSee(o.accountId)&&withinDate(o));
   if(p!=="all")rows=rows.filter(o=>o.platformId===p);
   if(a!=="all")rows=rows.filter(o=>o.accountId===a);
-  if(q)rows=rows.filter(o=>[o.buyer,o.contact,o.note,orderName(o)].join(" ").toLowerCase().includes(q));
+  if(q)rows=rows.filter(o=>kwHit([o.buyer,o.contact,o.note,orderName(o)].join(" "),q));
   if(!rows.length){el.innerHTML='<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">🧾</div><p>没有匹配的订单</p></div></div>';return;}
   var _total=rows.length;
   if(rows.length>oLimit)rows=rows.slice(0,oLimit);
@@ -3943,7 +3964,7 @@ function filterProd(q){
   q=(q||"").toLowerCase().trim();
   const sel=$("#f_prod");if(!sel)return;
   const cur=sel.value;
-  const list=(DB.products||[]).filter(p=>!q||((p.name||"").toLowerCase().indexOf(q)>=0||String(p.sku||"").toLowerCase().indexOf(q)>=0||String(p.barcode||"").toLowerCase().indexOf(q)>=0));
+  const list=(DB.products||[]).filter(p=>!q||kwHit((p.name||"")+" "+(p.category||"")+" "+String(p.sku||"")+" "+String(p.barcode||""),q));
   sel.innerHTML='<option value="">请选择商品</option>'+(list.length?list.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'（'+p.price+'）</option>').join(""):'<option value="" disabled>（无匹配商品）</option>');
   if(cur&&list.some(p=>p.id===cur))sel.value=cur;
   if(q&&list.length===1){sel.value=list[0].id;autoPrice("f_price");autoRate(true);if(typeof fillVariantSel==="function")fillVariantSel();if(typeof fillUnitSel==="function")fillUnitSel();}
@@ -5174,7 +5195,7 @@ function renderCreditTbl(){
   const el=document.getElementById("creditBody");if(!el)return;
   const creditOrders=DB.orders.filter(o=>o.payMode==="credit"&&canSee(o.accountId)&&(cF.p==="all"||o.platformId===cF.p)&&(cF.a==="all"||o.accountId===cF.a));
   const q=cuQ.trim().toLowerCase();
-  const open=creditOrders.filter(o=>isCredit(o)&&(!q||(o.creditCustomer||"").toLowerCase().includes(q)||orderName(o).toLowerCase().includes(q)));
+  const open=creditOrders.filter(o=>isCredit(o)&&(!q||kwHit((o.creditCustomer||"")+" "+orderName(o),q)));
   const groups={};
   open.forEach(o=>{const k=o.creditCustomer;if(!groups[k])groups[k]={name:k,due:o.creditDue,orders:0,recv:0,total:0};groups[k].orders++;groups[k].total+=orderPaid(o);groups[k].recv+=(+o.creditPaid||0);if(!groups[k].sellers)groups[k].sellers={};if(o.seller)groups[k].sellers[o.seller]=1;});
   const rows=Object.values(groups).map(g=>({...g,remain:g.total-g.recv})).sort((a,b)=>b.remain-a.remain);
