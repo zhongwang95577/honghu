@@ -2965,7 +2965,7 @@ function renderInvTbl(){
   else if(iF.brand&&iF.brand!=="all")rows=rows.filter(p=>(p.brand||"")===iF.brand);
   if(iF.cat!=="all")rows=rows.filter(p=>(p.category||"")===iF.cat);
   if(q)rows=rows.filter(p=>[p.name,p.sku,p.barcode,p.location,p.brand,p.category].join(" ").toLowerCase().includes(q));
-  if(iF.brand==="all"&&!q){
+  if(iF.brand==="all"&&(!iF.cat||iF.cat==="all")&&!q){
     var _bm={};DB.products.forEach(function(p){var b=(p.brand||"__none__");_bm[b]=_bm[b]||{n:0,s:0};_bm[b].n++;_bm[b].s+=(+p.stock||0);});
     var _bk=Object.keys(_bm).sort();
     el.innerHTML='<div style="padding:12px 10px 6px;font-size:13px;color:var(--muted)">👆 按品牌查看：点一个品牌进入，看该品牌的产品（支持分页）</div>'
