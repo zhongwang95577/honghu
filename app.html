@@ -2942,7 +2942,7 @@ function vInventory(){
   const html=`
   <div class="topbar">
     <div class="t-left"><h2>📦 库存管理</h2><p>共 <b>${total}</b> 个 SKU · 预警 <b style="color:var(--amber)">${low}</b> · 库存货值 <b>${yuan(stockVal)}</b></p></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="scanInfo()">📱 扫码入库</button>${isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="openBulkImport()">📥 批量导入</button><button class="btn btn-ghost btn-sm" onclick="exportCsv(inventoryCsv(),'库存.csv')">⬇️ 导出</button><button class="btn btn-ghost btn-sm" onclick="manageCats()">🏷️ 类目/品牌</button><button class="btn btn-ghost" onclick="openStockMove()">📤 出库 / 📥 入库</button><button class="btn btn-primary" onclick="openProductForm()">➕ 新增商品</button>`:''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="scanInfo()">📱 扫码入库</button>${isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="openBulkImport()">📥 批量导入</button><button class="btn btn-ghost btn-sm" onclick="exportCsv(inventoryCsv(),'库存.csv')">⬇️ 导出</button><button class="btn btn-ghost btn-sm" onclick="manageCats()">🏷️ 类目/品牌</button><button class="btn btn-ghost" onclick="forceCloudSync()" title="立刻和云端对齐：谁新用谁">☁️ 云同步</button><button class="btn btn-ghost" onclick="openStockMove()">📤 出库 / 📥 入库</button><button class="btn btn-primary" onclick="openProductForm()">➕ 新增商品</button>`:''}</div>
   </div>
   <div class="filterbar">
     ${(iF.brand&&iF.brand!=="all")?'<button class="btn btn-primary btn-sm" onclick="pickBrandVal()">← 返回品牌大类</button>':''}
@@ -3031,6 +3031,28 @@ function brandSel(val){
   if(val&&!opts.includes(val))opts.push(val);
   const options=opts.map(b=>`<option value="${esc(b)}" ${val===b?"selected":""}>${esc(b)}</option>`).join("");
   return `<select id="f_brand" onchange="onBrandPick()" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-size:14px;outline:none"><option value="">请选择品牌（可新建）</option>${options}<option value="__NEW__">➕ 新建品牌…</option></select><input id="f_brandNew" style="display:none;margin-top:8px;width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-size:14px;outline:none" placeholder="输入新品牌名">`;
+}
+async function forceCloudSync(){
+  try{
+    if(typeof cloudEnabled!=='function'||!cloudEnabled()){ toast('云端未配置','warn'); return; }
+    toast('☁️ 正在和云端对齐…');
+    const t=await cloudMeta();
+    const local=+DB.savedAt||0;
+    if(t>local+500){
+      const d=await cloudLoad();
+      if(d&&d.orders){
+        DB=d; DB.savedAt=Math.max(+DB.savedAt||0,t);
+        try{ localStorage.setItem('gaiMallDB',JSON.stringify(DB)); }catch(e){}
+        try{ await fetch(API+'/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:DB})}); }catch(e){}
+        try{ render(); }catch(e){}
+        toast('✅ 已拉取云端最新数据');
+        return;
+      }
+    }
+    const r=await cloudSave();
+    if(r&&r.ok){ toast('✅ 本机已是最新，并已推送到云端'); }
+    else{ toast('⚠️ 推送失败：'+((r&&r.code)||'未知'),'warn'); }
+  }catch(e){ toast('同步失败：'+e.message,'warn'); }
 }
 function openProdDetail(id){
   try{
