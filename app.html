@@ -5466,6 +5466,9 @@ function mobileCardify(){try{if(window.innerWidth>=760)return;document.querySele
 var _moT=null;
 try{var _mo=new MutationObserver(function(){if(_moT)clearTimeout(_moT);_moT=setTimeout(mobileCardify,60);});var _v=document.getElementById("view"),_m=document.getElementById("modal");if(_v)_mo.observe(_v,{childList:true,subtree:true});if(_m)_mo.observe(_m,{childList:true,subtree:true});}catch(e){}
 boot();
+// 启动即尝试从云端拉一次（无需登录），避免"手机上改了、电脑端没登录就看不到"
+setTimeout(function(){ try{ if(typeof cloudEnabled==="function"&&cloudEnabled()&&typeof cloudPoll==="function"){ cloudPoll(); } }catch(e){} },2500);
+setTimeout(function(){ try{ if(typeof cloudEnabled==="function"&&cloudEnabled()&&typeof cloudPoll==="function"){ cloudPoll(); } }catch(e){} },8000);
 
 </script>
 </body>
