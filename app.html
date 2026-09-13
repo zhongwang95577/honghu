@@ -3037,13 +3037,36 @@ function openStockMove(){
   openModal('<div class="modal-head"><h3>📤 出库 / 📥 入库（不用开单、不用条码）</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
    +'<div class="modal-body">'
    +'<div class="field"><label>类型</label><select id="sm_dir" onchange="onDirPick()"><option value="out">📤 出库（减库存）</option><option value="in">📥 入库（加库存）</option></select></div>'
-   +'<div class="field"><label class="req">商品</label><select id="sm_prod" onchange="onMoveProd()"><option value="">请选择商品</option>'+list+'</select></div>'
+   +'<div class="field"><label class="req">商品（打几个字就能搜）</label><input id="sm_q" placeholder="输入 商品名 / SKU / 条码 / 品牌" autocomplete="off" oninput="renderMovePick()"><div id="sm_sel" class="hint" style="margin-top:6px">未选择商品</div><div id="sm_list" style="max-height:36vh;overflow:auto;margin-top:6px"></div><input type="hidden" id="sm_prod"></div>'
    +'<div class="field" id="sm_varWrap" style="display:none"><label>规格</label><select id="sm_var" onchange="onMoveProd()"></select></div>'
    +'<div class="field"><div class="row"><div><label class="req">数量</label><input id="sm_qty" type="number" step="0.01" value="1"></div><div><label>原因</label><select id="sm_reason"><option value="手工调整">手工调整</option><option value="损耗">损耗</option><option value="赠送">赠送</option><option value="退货">退货</option><option value="补货">补货</option><option value="其他">其他</option></select></div></div></div>'
    +'<div class="field"><label>备注（可选）</label><input id="sm_note" placeholder="如：给张师傅 2 对"></div>'
    +'<div class="hint">当前库存：<b id="sm_stockTip">—</b></div>'
    +'</div>'
    +'<div class="modal-foot"><button class="btn btn-ghost" onclick="openStockLogs()">📋 出入库记录</button><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doStockMove()">确认</button></div>');
+  onMoveProd();
+  renderMovePick();
+}
+function renderMovePick(){
+  try{
+    const q=((document.getElementById('sm_q')||{}).value||'').trim().toLowerCase();
+    const box=document.getElementById('sm_list'); if(!box)return;
+    let ps=(DB.products||[]).slice();
+    if(q) ps=ps.filter(function(p){ return (((p.name||'')+' '+(p.sku||'')+' '+(p.barcode||'')+' '+(p.brand||'')+' '+(p.category||''))).toLowerCase().indexOf(q)>=0; });
+    const shown=ps.slice(0,60);
+    box.innerHTML=shown.length?shown.map(function(p){
+      return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:11px;margin-bottom:6px;background:var(--bg-2);cursor:pointer" onclick="pickMoveProd(\''+p.id+'\')">'
+        +'<span><b>'+esc(p.name)+'</b>'+(p.sku?('<span style="color:var(--muted);font-size:12px"> · '+esc(p.sku)+'</span>'):'')+(p.brand?('<span style="color:var(--muted);font-size:12px"> · '+esc(p.brand)+'</span>'):'')+'</span>'
+        +'<span style="white-space:nowrap;color:var(--muted);font-size:12px">库存 '+((p.stock==null?0:p.stock))+(p.unit||'')+'</span>'
+        +'</div>';
+    }).join(''):'<div class="hint">没找到商品（换个词试试）</div>';
+    if(ps.length>shown.length) box.innerHTML+='<div class="hint">还有 '+(ps.length-shown.length)+' 个，继续输入缩小范围</div>';
+  }catch(e){}
+}
+function pickMoveProd(id){
+  try{ const h=document.getElementById('sm_prod'); if(h)h.value=id; }catch(e){}
+  try{ const p=(DB.products||[]).find(function(x){return x.id===id;}); const s=document.getElementById('sm_sel'); if(s)s.textContent=p?('已选：'+p.name+(p.sku?(' / '+p.sku):'')):'未选择商品'; }catch(e){}
+  try{ const l=document.getElementById('sm_list'); if(l)l.innerHTML=''; }catch(e){}
   onMoveProd();
 }
 function onDirPick(){ try{ const d=(document.getElementById('sm_dir')||{}).value; const r=document.getElementById('sm_reason'); if(r){ r.value=(d==='in'?'补货':'手工调整'); } }catch(e){} }
