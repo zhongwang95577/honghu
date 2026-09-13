@@ -3007,7 +3007,7 @@ function renderInvTbl(){
       return S(a&&a.name).localeCompare(S(b&&b.name),"zh-Hans-CN");
     };
     if(st==="group"){ rows.sort(function(a,b){
-      var g=function(p){ return (S(p.brand)||"\uffff")+" "+S(p.category); };
+      var g=function(p){ return (S(p.brand)||"\uffff"); };
       var ga=g(a), gb=g(b);
       if(ga!==gb){ var r=ga.localeCompare(gb,"zh-Hans-CN"); if(r) return r; }
       return nameCmp(a,b);
