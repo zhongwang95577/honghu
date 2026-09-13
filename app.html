@@ -2984,7 +2984,7 @@ function renderInvTbl(){
       var h='<div class="ocard">';
       h+='<div style="display:flex;gap:10px;align-items:center">';
       h+=p.img?'<img src="'+esc(p.img)+'" onclick="viewProdImg(\''+p.id+'\')" style="width:52px;height:52px;object-fit:cover;border-radius:10px;border:1px solid var(--border);cursor:pointer">':'<div style="width:52px;height:52px;border-radius:10px;background:var(--bg-2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px">📦</div>';
-      h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+esc(p.name)+'</div>';
+      h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;cursor:pointer" onclick="openProdDetail(\''+p.id+'\')">'+esc(p.name)+'</div>';
       h+='<div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+esc(p.category||"")+(p.brand?(' · '+esc(p.brand)):'')+(p.sku?(' · '+esc(p.sku)):'')+'</div>';
       if(p.barcode)h+='<div style="font-size:11.5px;color:var(--muted);margin-top:1px">'+esc(p.barcode)+'</div>';
       h+='</div>';
@@ -3008,7 +3008,7 @@ function renderInvTbl(){
     <tbody>${rows.map(p=>{const lowStock=p.stock<=p.minStock;return `<tr>
       <td>${p.img?`<img src="${esc(p.img)}" onclick="viewProdImg('${p.id}')" style="width:40px;height:40px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--border)">`:`<span style="color:var(--muted)">—</span>`}</td>
       <td style="color:var(--muted)">${esc(p.sku)}</td>
-      <td style="font-weight:600">${esc(p.name)}${p.barcode?`<div style="font-size:10px;color:var(--muted)">${esc(p.barcode)}</div>`:""}${(p.variants&&p.variants.length)?p.variants.map(v=>`<div style="font-size:10px;color:var(--muted)">${esc(v.name||"")}：${esc(v.barcode||"")}　库存 ${(v.stock==null?0:v.stock)}</div>`).join(""):""}${(p.units&&p.units.length)?`<div style="font-size:10px;color:var(--accent-2)">单位：${esc(p.unit||"个")} / ${p.units.map(u=>esc(u.name)+"="+u.factor+(u.price?("（¥"+u.price+"）"):"")).join(" / ")}</div>`:""}</td>
+      <td style="font-weight:600;cursor:pointer" onclick="openProdDetail('${p.id}')" title="点击查看商品详情">${esc(p.name)}${p.barcode?`<div style="font-size:11.5px;color:var(--muted)">${esc(p.barcode)}</div>`:""}${(p.variants&&p.variants.length)?p.variants.map(v=>`<div style="font-size:11.5px;color:var(--muted)">${esc(v.name||"")}：${esc(v.barcode||"")}　库存 ${(v.stock==null?0:v.stock)}</div>`).join(""):""}${(p.units&&p.units.length)?`<div style="font-size:11.5px;color:var(--accent-2)">单位：${esc(p.unit||"个")} / ${p.units.map(u=>esc(u.name)+"="+u.factor+(u.price?("（¥"+u.price+"）"):"")).join(" / ")}</div>`:""}</td>
       <td style="color:var(--muted)">${esc(p.brand||"—")}</td>
       <td>${esc(p.category)}</td>
       <td>${yuan(p.cost)}</td><td style="color:var(--green)">${yuan(p.price)}</td>
@@ -3031,6 +3031,44 @@ function brandSel(val){
   if(val&&!opts.includes(val))opts.push(val);
   const options=opts.map(b=>`<option value="${esc(b)}" ${val===b?"selected":""}>${esc(b)}</option>`).join("");
   return `<select id="f_brand" onchange="onBrandPick()" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-size:14px;outline:none"><option value="">请选择品牌（可新建）</option>${options}<option value="__NEW__">➕ 新建品牌…</option></select><input id="f_brandNew" style="display:none;margin-top:8px;width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-size:14px;outline:none" placeholder="输入新品牌名">`;
+}
+function openProdDetail(id){
+  try{
+    const p=(DB.products||[]).find(function(x){return x.id===id;});
+    if(!p){ toast('找不到商品','warn'); return; }
+    const low=(+p.stock||0)<=(+p.minStock||0);
+    let h='<div class="modal-head"><h3>📦 '+esc(p.name)+'</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">';
+    if(p.img)h+='<div style="text-align:center;margin-bottom:10px"><img src="'+esc(p.img)+'" style="max-width:180px;max-height:180px;border-radius:12px;border:1px solid var(--border)"></div>';
+    h+='<table><tbody>';
+    h+='<tr><td style="color:var(--muted);width:96px">SKU 编码</td><td>'+esc(p.sku||'—')+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">条形码</td><td>'+esc(p.barcode||'—')+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">品牌 / 分类</td><td>'+esc(p.brand||'（未填品牌）')+' / '+esc(p.category||'—')+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">单位</td><td>'+esc(p.unit||'个')+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">库存 / 安全库存</td><td><b style="font-size:16px;color:'+(low?'var(--red)':'var(--text)')+'">'+(+p.stock||0)+'</b> '+esc(p.unit||'')+' / '+esc(String(p.minStock==null?0:p.minStock))+'　'+(low?'<span class="badge red">缺货预警</span>':'<span class="badge green">正常</span>')+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">存放位置</td><td>'+esc(p.location||'—')+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">成本价</td><td>'+yuan(p.cost)+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">售价</td><td style="color:var(--green);font-weight:600">'+yuan(p.price)+'</td></tr>';
+    if(p.pairCost||p.pairPrice||p.oneCost||p.onePrice){
+      h+='<tr><td style="color:var(--muted)">成对成本 / 售价</td><td>'+yuan(p.pairCost)+' / '+yuan(p.pairPrice)+'</td></tr>';
+      h+='<tr><td style="color:var(--muted)">单个成本 / 售价</td><td>'+yuan(p.oneCost)+' / '+yuan(p.onePrice)+'</td></tr>';
+      h+='<tr><td style="color:var(--muted)">换算</td><td>1'+esc(p.unit||'对')+' = '+(+p.pairFactor||2)+' '+esc(p.oneUnit||'单只')+'</td></tr>';
+    }
+    h+='</tbody></table>';
+    if(p.variants&&p.variants.length){
+      h+='<h4 style="margin:14px 0 6px">规格明细（'+p.variants.length+'）</h4><div class="table-wrap"><table><thead><tr><th>规格名</th><th>条码</th><th>库存</th></tr></thead><tbody>';
+      p.variants.forEach(function(v){ h+='<tr><td>'+esc(v.name||'—')+'</td><td>'+esc(v.barcode||'—')+'</td><td><b>'+(+v.stock||0)+'</b></td></tr>'; });
+      h+='</tbody></table></div>';
+    }
+    if(p.units&&p.units.length){
+      h+='<h4 style="margin:14px 0 6px">包装单位</h4><div class="table-wrap"><table><thead><tr><th>单位名</th><th>换算</th><th>售价</th></tr></thead><tbody>';
+      p.units.forEach(function(u){ h+='<tr><td>'+esc(u.name||'—')+'</td><td>1 = '+esc(String(u.factor||1))+'</td><td>'+(u.price?yuan(u.price):'—')+'</td></tr>'; });
+      h+='</tbody></table></div>';
+    }
+    h+='</div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">关闭</button>';
+    if(typeof isAdmin==='function'&&isAdmin())h+='<button class="btn btn-primary" onclick="closeModal();openProductForm(\''+p.id+'\')">✏️ 编辑</button>';
+    h+='</div>';
+    openModal(h);
+  }catch(e){ toast('打不开详情：'+e.message,'warn'); }
 }
 function openStockMove(){
   const list=(DB.products||[]).map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+(p.unit?('（'+p.unit+'）'):'')+'</option>'; }).join('');
