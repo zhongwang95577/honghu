@@ -3321,10 +3321,16 @@ function openProductForm(id){
         <div><label>分类（自定义类目）</label>${catSel("")}</div>
         <div><label>存放位置</label><input id="f_loc" placeholder="库房A区 / B区"></div>
       </div></div>
-      <div class="field"><div class="row">
+      <div class="field" style="display:none"><div class="row">
         <div><label class="req">成本价</label><input id="f_cost" type="number" step="0.01"></div>
         <div><label class="req">销售价</label><input id="f_price" type="number" step="0.01"></div>
       </div></div>
+      <div class="field" id="basePriceBox"><div class="row"><div><label>成本价(¥)</label><input id="f_bcost" type="number" step="0.01" placeholder="单只/基础单位成本" value=""></div><div><label>售价(¥)</label><input id="f_bprice" type="number" step="0.01" placeholder="单只/基础单位售价" value=""></div></div></div>
+      <div class="field" id="pairBox" style="display:none"><label>成对 / 单个 成本与售价（单位选 对/双/套/副/组 时填写）</label>
+        <div class="row"><div><label>成对成本¥</label><input id="f_pairCost" type="number" step="0.01" placeholder="一套/一对的成本" oninput="syncOnePrice()" value=""></div><div><label>成对售价¥</label><input id="f_pairPrice" type="number" step="0.01" placeholder="一套/一对的售价" oninput="syncOnePrice()" value=""></div></div>
+        <div class="row" style="margin-top:6px"><div><label>单个成本¥</label><input id="f_oneCost" type="number" step="0.01" placeholder="单只的成本" value=""></div><div><label>单个售价¥</label><input id="f_onePrice" type="number" step="0.01" placeholder="单只的售价" value=""></div></div>
+        <div class="row" style="margin-top:6px"><div><label>1对/套 = 多少只</label><input id="f_pairFactor" type="number" step="1" value="2" placeholder="如 1对=2只" oninput="syncOnePrice()"></div><div><label>单只单位名</label><input id="f_oneUnit" value="单只" placeholder="如 单只/个"></div></div>
+      </div>
       <div class="field"><div class="row">
         <div><label class="req">当前库存</label><input id="f_stock" type="number" value="0"></div>
         <div><label>安全库存</label><input id="f_min" type="number" value="3"></div>
