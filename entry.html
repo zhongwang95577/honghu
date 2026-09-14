@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>鸿鹄对账软件</title>
+<style>body{font-family:-apple-system,Segoe UI,Microsoft YaHei,sans-serif;background:#0f172a;color:#cbd5e1;margin:0;height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}img{width:88px;height:88px;border-radius:20px}.s{font-size:13px;color:#64748b}</style>
+</head>
+<body>
+<img src="icon-192.png" alt="">
+<div>正在进入，请稍候…</div>
+<div class="s" id="msg"></div>
+<script>
+/* 全自动入口：先把云端账号放进本机存储，再进入软件（之后软件自己会登录云端、自动同步）。
+   也支持局域网：地址里带 ?k=口令 时会一并记住，并尝试读取电脑上的本机配置。 */
+(function(){
+  var msg=document.getElementById('msg');
+  function setAcc(){
+    try{
+      var s=atob('Mzk4NTEyMjYzMUBxcS5jb218WndjcDEyMy4='); var a=s.split('|');
+      if(a.length>=2){ localStorage.setItem('honghuSyncEmail',a[0]); localStorage.setItem('honghuSyncPass',a[1]); return true; }
+    }catch(e){}
+    return false;
+  }
+  function getK(){
+    try{ var m=location.search.match(/[?&]k=([^&]+)/); if(m){ var t=decodeURIComponent(m[1]); localStorage.setItem('honghuTok',t); return t; } }catch(e){}
+    try{ return localStorage.getItem('honghuTok')||''; }catch(e){ return ''; }
+  }
+  (async function(){
+    var k=getK();
+    if(k){ msg.textContent='已记住访问口令'; }
+    setAcc();
+    try{
+      var r=await fetch('同步配置.json'+(k?('?k='+encodeURIComponent(k)):''),{cache:'no-store'});
+      if(r.ok){ var j=await r.json(); if(j&&j.tok){ try{localStorage.setItem('honghuTok',String(j.tok));}catch(e){} } if(j&&j.email&&j.pass){ try{localStorage.setItem('honghuSyncEmail',String(j.email));localStorage.setItem('honghuSyncPass',String(j.pass));}catch(e){} } msg.textContent='已读取本机配置'; }
+    }catch(e){}
+    var dest='app.html'+(k?('?k='+encodeURIComponent(k)):'');
+    location.replace(dest);
+  })();
+})();
+</script>
+</body>
+</html>
