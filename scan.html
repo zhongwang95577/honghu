@@ -121,6 +121,18 @@ function csyncEmail(){ try{return localStorage.getItem("honghuSyncEmail")||"";}c
 function csyncPass(){ try{return localStorage.getItem("honghuSyncPass")||"";}catch(e){return "";} }
 const _CLOUD_BH='Bea'+'rer ';   /* 云端授权头前缀 */
 let _cjwt=null,_cjwtExp=0,_tok=null;
+/* 自动读取电脑上的本地配置（同步配置.json）：口令 + 云端账号，手机也就不用填了 */
+let _cfgTried=false;
+async function autoSyncCfg(){
+  if(_cfgTried)return; _cfgTried=true;
+  try{
+    const r=await fetch(apiUrl('/同步配置.json')+'&t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return;
+    const j=await r.json();
+    if(j&&j.tok){ try{ localStorage.setItem('honghuTok',String(j.tok)); }catch(e){} }
+    if(j&&j.email&&j.pass){ try{ localStorage.setItem('honghuSyncEmail',String(j.email)); localStorage.setItem('honghuSyncPass',String(j.pass)); }catch(e){} }
+  }catch(e){}
+}
 async function cloudAuth(){
   try{
     if(_cjwt&&Date.now()<_cjwtExp-60000)return _cjwt;
@@ -361,7 +373,8 @@ async function submitScan(auto){
   if(payload.qty<=0){if(!auto)toast('<span class="err">请填写数量</span>');return;}
   const btn=document.getElementById("subBtn");btn.disabled=true;if(!auto)btn.textContent="提交中…";
   let j=null;
-  try{const r=await fetch(apiUrl("/scanAdd"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(r.ok){j=await r.json();online=true;setTag();}}catch(e){}
+  let _needTok=false;
+  try{const r=await fetch(apiUrl("/scanAdd"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(r.status===401)_needTok=true;if(r.ok){j=await r.json();online=true;setTag();}}catch(e){}
   if(!j||!j.ok){
     try{const db=await cloudGet()||{products:[],brands:[],cats:[]};const res=mergeInto(db,payload);const ok=await cloudPut(db);if(ok){j={ok:true,name:res.name,stock:res.stock};}}
     catch(e){}
@@ -387,6 +400,7 @@ async function submitScan(auto){
 }
 
 function diag(){try{var sec=window.isSecureContext;var gum=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);var bd=("BarcodeDetector" in window);var el=document.getElementById("diagLine");if(el)el.textContent="连接:"+(sec?"安全OK":"不安全")+" · 摄像头接口:"+(gum?"有":"无")+" · 系统识别:"+(bd?"有":"无");}catch(e){}}
+try{autoSyncCfg();}catch(e){}
 loadData();syncTick();try{diag();}catch(e){}
 setTimeout(function(){try{toggleCam();}catch(e){}},600);
 setInterval(refreshData,5000);
