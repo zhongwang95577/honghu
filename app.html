@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-11c</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-14b</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2712,6 +2712,7 @@ const buyerShip=o=>+((o.buyerShip)||0)||0;                // 买家运费(收入
 const orderPaid=o=>orderGross(o)+buyerShip(o);            // 买家实付 = 商品金额 + 买家运费
 const orderRefund=o=>+((o.refund&&o.refund.amount)||0)||0;
 const effQty=o=>isRefund(o)?0:(o.qty||0);
+const oQty=o=>effQty(o)*(+((o&&o.packFactor)||1));   // 折算成“基础单位”的数量（扣库存/算成本用）
 const orderNet=o=>orderPaid(o)-orderRefund(o)-orderFees(o);
 const orderCost=o=>{var _f=(o.packFactor||1);if(o.isTemp)return (+o.tempCost||0)*effQty(o)*_f;const p=DB.products.find(x=>x.id===o.productId);return p?(p.cost||0)*effQty(o)*_f:0;};
 const orderName=o=>o.productName?o.productName:(pname(o.productId));
@@ -2998,6 +2999,13 @@ function kwHit(hay, q){
     return parts.every(function(p){ return H.indexOf(kw(p))>=0; });
   }catch(e){ return true; }
 }
+/* 商品搜索文本：名称/类目/品牌/SKU/条码/单位/规格/规格条码 都能搜到 */
+function prodHay(p){
+  if(!p)return '';
+  var s=[p.name,p.category,p.brand,p.sku,p.barcode,p.unit].filter(Boolean).join(' ');
+  try{ if(p.variants&&p.variants.length)s+=' '+p.variants.map(function(v){return (v.name||'')+' '+(v.barcode||'');}).join(' '); }catch(e){}
+  return s;
+}
 function renderInvTbl(){
   const el=document.getElementById("invTbl");if(!el)return;
   const q=iF.q.trim().toLowerCase();
@@ -3005,7 +3013,7 @@ function renderInvTbl(){
   if(iF.brand==="__none__")rows=rows.filter(p=>!p.brand);
   else if(iF.brand&&iF.brand!=="all")rows=rows.filter(p=>(p.brand||"")===iF.brand);
   if(iF.cat!=="all")rows=rows.filter(p=>(p.category||"")===iF.cat);
-  if(q)rows=rows.filter(p=>kwHit((p.name||"")+" "+(p.category||""),iF.q));
+  if(q)rows=rows.filter(p=>kwHit(prodHay(p),iF.q));
   if(iF.brand==="all"&&(!iF.cat||iF.cat==="all")&&!q){
     var _bm={};DB.products.forEach(function(p){var b=(p.brand||"__none__");_bm[b]=_bm[b]||{n:0,s:0};_bm[b].n++;_bm[b].s+=(+p.stock||0);});
     var _bk=Object.keys(_bm).sort();
@@ -3179,7 +3187,7 @@ function renderMovePick(){
     const q=((document.getElementById('sm_q')||{}).value||'').trim().toLowerCase();
     const box=document.getElementById('sm_list'); if(!box)return;
     let ps=(DB.products||[]).slice();
-    if(q) ps=ps.filter(function(p){ return kwHit((p.name||'')+' '+(p.category||''),q); });
+    if(q) ps=ps.filter(function(p){ return kwHit(prodHay(p),q); });
     const shown=ps.slice(0,60);
     box.innerHTML=shown.length?shown.map(function(p){
       return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:11px;margin-bottom:6px;background:var(--bg-2);cursor:pointer" onclick="pickMoveProd(\''+p.id+'\')">'
@@ -3762,6 +3770,13 @@ function openOrderForm(id){
         <div><label>销售日期</label><input id="f_date" type="date" value="${o.date}"></div>
         <div><label>状态</label><select id="f_status" onchange="toggleRefund()"><option ${o.status==="待发货"?"selected":""}>待发货</option><option ${o.status==="已发货"?"selected":""}>已发货</option><option ${o.status==="已完成"?"selected":""}>已完成</option><option ${o.status==="已退款"?"selected":""}>已退款</option><option ${o.status==="已退货"?"selected":""}>已退货</option><option ${o.status==="已换货"?"selected":""}>已换货</option></select></div>
       </div></div>
+      <div class="field"><div class="row">
+        <div><label>计划收款日</label><input id="f_plandue" type="date" value="${esc(o.planDue||"")}"></div>
+        <div><label>送货日期</label><input id="f_deliver" type="date" value="${esc(o.deliverDate||"")}"></div>
+        <div><label>制单人</label><input id="f_maker" value="${esc(o.maker||((CUR&&CUR.username)||""))}"></div>
+      </div></div>
+      <div class="field"><label>送货地址</label><input id="f_addr" value="${esc(o.addr||"")}" placeholder="输入送货地址"></div>
+      <div class="field"><label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="f_cod" ${o.cod?"checked":""}> 到付</label></div>
       ${refundBlock(o)}
       </div>
       <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" data-save onclick="saveOrder('${id}')">保存修改</button></div>`);
@@ -3923,8 +3938,11 @@ function onOrderUnit(){
 function orderUnitFactor(){
   var s=document.getElementById("f_unitSel2");if(!s||!s.value)return 1;
   var pid=document.getElementById("f_prod")?document.getElementById("f_prod").value:"";
-  var p=DB.products.find(function(x){return x.id===pid;});if(!p||!p.units)return 1;
-  var uu=p.units.find(function(u){return u.name===s.value;});return uu?(+uu.factor||1):1;
+  var p=DB.products.find(function(x){return x.id===pid;});if(!p)return 1;
+  if(p.unit&&s.value===p.unit)return 1;
+  if(p.oneUnit&&s.value===p.oneUnit)return 1/(+(p.pairFactor||2)||2);
+  if(p.units){var uu=p.units.find(function(u){return u.name===s.value;});if(uu)return (+uu.factor||1);}
+  return 1;
 }
 function fillVariantSel(){
   var f=document.getElementById("varField"),s=document.getElementById("f_variant");
@@ -4010,7 +4028,7 @@ function filterProd(q){
   q=(q||"").toLowerCase().trim();
   const sel=$("#f_prod");if(!sel)return;
   const cur=sel.value;
-  const list=(DB.products||[]).filter(p=>!q||kwHit((p.name||"")+" "+(p.category||"")+" "+String(p.sku||"")+" "+String(p.barcode||""),q));
+  const list=(DB.products||[]).filter(p=>!q||kwHit(prodHay(p),q));
   sel.innerHTML='<option value="">请选择商品</option>'+(list.length?list.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'（'+p.price+'）</option>').join(""):'<option value="" disabled>（无匹配商品）</option>');
   if(cur&&list.some(p=>p.id===cur))sel.value=cur;
   if(q&&list.length===1){sel.value=list[0].id;autoPrice("f_price");autoRate(true);if(typeof fillVariantSel==="function")fillVariantSel();if(typeof fillUnitSel==="function")fillUnitSel();}
@@ -4030,8 +4048,17 @@ function syncCreditCus(force){
 }
 var _oi=[];
 function oiFind(it){return DB.products.find(function(x){return x.id===it.pid;});}
-function oiFactor(it){var p=oiFind(it);if(!p||!it.unit)return 1;if(p.unit&&it.unit===p.unit)return +(p.pairFactor||2);if(p.oneUnit&&it.unit===p.oneUnit)return 1;if(p.units){var u=p.units.find(function(v){return v.name===it.unit;});if(u)return (+u.factor||1);}return 1;}
-function oiAmt(it){return (+it.qty||0)*oiFactor(it)*(+it.price||0);}
+/* 1个“所售单位”等于多少个基础单位：基准单位=1；单个=1/每对只数；包装单位=其换算 */
+function oiFactor(it){
+  var p=oiFind(it);
+  if(!p)return 1;
+  var u=it.unit||p.unit||'';
+  if(p.unit&&u===p.unit)return 1;
+  if(p.oneUnit&&u===p.oneUnit)return 1/(+(p.pairFactor||2)||2);
+  if(p.units){var uu=p.units.find(function(v){return v.name===u;});if(uu)return (+uu.factor||1);}
+  return 1;
+}
+function oiAmt(it){return (+it.qty||0)*(+it.price||0);}
 function oiAdd(){_oi.push({pid:"",name:"",cost:"",qty:1,unit:"",price:""});oiRender();}
 function oiMode(){var r=document.querySelector("input[name=oiType]:checked");return r?r.value:"inv";}
 function oiDel(i){_oi.splice(i,1);oiRender();}
@@ -4073,7 +4100,7 @@ function oiRender(){
     }
     var unitCell;
     if(temp){ unitCell='<input placeholder="个" value="'+esc(it.unit||"")+'" oninput="oiSet('+i+',\'unit\',this.value)">'; }
-    else{ var uopts=''; if(p){ var _base=p.unit||'个'; uopts+='<option value="">'+esc(_base)+'</option>'; (p.units||[]).forEach(function(u){uopts+='<option value="'+esc(u.name)+'" '+(it.unit===u.name?'selected':'')+'>'+esc(u.name)+'('+u.factor+')</option>';}); if((p.pairPrice||p.pairCost)&&_base!==(p.oneUnit||'单只')){ uopts+='<option value="'+esc(_base)+'" '+(it.unit===_base?'selected':'')+'>'+esc(_base)+'('+(p.pairFactor||2)+')</option>'; uopts+='<option value="'+(p.oneUnit||'单只')+'" '+(it.unit===(p.oneUnit||'单只')?'selected':'')+'>'+(p.oneUnit||'单只')+'(1)</option>'; } } unitCell=p?('<select onchange="oiPickUnit('+i+',this.value)">'+uopts+'</select>'):'<span style="color:var(--muted)">—</span>'; }
+    else{ var uopts=''; if(p){ var _base=p.unit||'个'; uopts+='<option value="'+esc(_base)+'" '+((!it.unit||it.unit===_base)?'selected':'')+'>'+esc(_base)+'（按'+esc(_base)+'）</option>'; if((p.pairPrice||p.pairCost)&&_base!==(p.oneUnit||'单只')){ uopts+='<option value="'+(p.oneUnit||'单只')+'" '+(it.unit===(p.oneUnit||'单只')?'selected':'')+'>'+(p.oneUnit||'单只')+'</option>'; } (p.units||[]).forEach(function(u){uopts+='<option value="'+esc(u.name)+'" '+(it.unit===u.name?'selected':'')+'>'+esc(u.name)+'('+u.factor+')</option>';}); } unitCell=p?('<select onchange="oiPickUnit('+i+',this.value)">'+uopts+'</select>'):'<span style="color:var(--muted)">—</span>'; }
     var h='<tr><td>'+(i+1)+'</td>';
     h+='<td>'+cell1+'</td>';
     h+='<td><input type="number" min="1" value="'+(it.qty||1)+'" style="width:64px" oninput="oiSet('+i+',\'qty\',this.value)"></td>';
@@ -4108,9 +4135,12 @@ function saveOrderNew(printAfter){
     if(!items.length){toast(_tp?"请至少填写一个临时商品名称":"请至少添加一件商品","err");return;}
     if(items.some(function(it){return (+it.qty||0)<=0;})){toast("数量要大于 0","err");return;}
     if(items.some(function(it){return (+it.price||0)<0||(+it.price||0)>9999999;})){toast("单价不正确（不能为负或过大）","err");return;}
+    var _carry={},_defStatus="待发货";
     if(window._editGroup&&window._editGroup.length){
       var _og=window._editGroup;
-      _og.forEach(function(x){var pr=DB.products.find(function(p){return p.id===x.productId;});if(pr)pr.stock=Math.max(0,pr.stock+effQty(x));});
+      _og.forEach(function(x){var pr=DB.products.find(function(p){return p.id===x.productId;});if(pr)pr.stock=Math.max(0,pr.stock+oQty(x));});
+      _og.forEach(function(x){var k=String(x.productId||x.productName||"");if(!_carry[k])_carry[k]=x;});
+      _defStatus=(_og[0]&&_og[0].status)||"待发货";
       var _oids=_og.map(function(x){return x.id;});
       DB.orders=DB.orders.filter(function(x){return _oids.indexOf(x.id)<0;});
       window._editGroup=null;
@@ -4118,14 +4148,19 @@ function saveOrderNew(printAfter){
     var n=0,made=[],firstId=null;var gid="g"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);if(items.length<2)gid="";
     items.forEach(function(it){
       var p=_tp?null:DB.products.find(function(x){return x.id===it.pid;});if(!_tp&&!p)return;
+      var _old=_carry[String(it.pid||it.name||"")]||null;
+      var _carryRefund=_old?(_old.refund||null):null;
+      var _carryPaid=_old?(+_old.creditPaid||0):0;
+      var _carryPays=_old?(_old.creditPayments||[]):[];
+      var _carryStatus=_old?(_old.status||_defStatus):_defStatus;
       var obj={platformId:plat,accountId:acct,productId:(_tp?"":it.pid),isTemp:!!_tp,productName:(_tp?(it.name||"").trim():""),variantName:"",orderUnit:it.unit||"",tempCost:(_tp?(+it.cost||0):0),
-        qty:(+it.qty||1)*oiFactor(it),price:+it.price||0,refund:null,
+        qty:(+it.qty||1),price:+it.price||0,refund:_carryRefund,
         buyerShip:(n===0?(_N("f_buyerShip")):0),shipping:(n===0?(_N("f_shipping")):0),
         commRate:(n===0?(_N("f_commRate")):0),comm:(n===0?(_N("f_comm")):0),
         extraRate:(n===0?(_N("f_extraRate")):0),extra:(n===0?(_N("f_extra")):0),other:(n===0?(_N("f_other")):0),
         cod:(n===0?!!(_C("f_cod")):false),
-        payMode:pm,creditCustomer:(pm==="credit"?ccn:""),creditDue:"",creditPaid:0,creditPayments:[],
-        buyer:buy,contact:contact,note:note,addr:addr,deliverDate:deliver,planDue:plandue,date:date,status:"待发货",gid:gid,maker:((document.getElementById("f_maker")&&document.getElementById("f_maker").value.trim())||"")};
+        payMode:pm,creditCustomer:(pm==="credit"?ccn:""),creditDue:"",creditPaid:_carryPaid,creditPayments:_carryPays,
+        buyer:buy,contact:contact,note:note,addr:addr,deliverDate:deliver,planDue:plandue,date:date,status:_carryStatus,gid:gid,maker:((document.getElementById("f_maker")&&document.getElementById("f_maker").value.trim())||"")};
       obj.seller=(CUR&&CUR.username)?CUR.username:"";
       obj.packFactor=(_tp?1:oiFactor(it));
       if(!_tp)stockAdj(p,obj.variantName,-(effQty(obj)*(obj.packFactor||1)));
@@ -4341,7 +4376,7 @@ function bulkDelete(){
   var ids=[].concat.apply([],Array.from(selOrders).map(function(id){return (orderGroup(id)||[]).map(function(x){return x.id;});}));
   ids=[...new Set(ids)];if(!ids.length)return;
   if(!confirm("确定删除选中的订单（共 "+ids.length+" 行，库存全部回补）？"))return;
-  ids.forEach(function(id){var x=DB.orders.find(function(y){return y.id===id;});if(!x)return;var p=DB.products.find(function(y){return y.id===x.productId;});if(p)p.stock=Math.max(0,p.stock+effQty(x));});
+  ids.forEach(function(id){var x=DB.orders.find(function(y){return y.id===id;});if(!x)return;var p=DB.products.find(function(y){return y.id===x.productId;});if(p)p.stock=Math.max(0,p.stock+oQty(x));});
   DB.orders=DB.orders.filter(function(x){return ids.indexOf(x.id)<0;});selOrders.clear();logAct("批量删除订单",ids.length+" 行");save();render();toast("已删除 "+ids.length+" 行，库存已回补","warn");
 }
 function bulkReturn(){
@@ -4360,7 +4395,7 @@ function delGroup(id){
   var l=orderGroup(id)||[];if(!l.length)return;
   if(l.length>1&&!confirm("这一单有 "+l.length+" 件商品，确定整单删除？（库存会全部回补）"))return;
   if(l.length===1&&!confirm("确定删除该订单？（已扣库存自动回补）"))return;
-  l.forEach(function(x){var prod=DB.products.find(function(p){return p.id===x.productId;});if(prod)prod.stock=Math.max(0,prod.stock+effQty(x));});
+  l.forEach(function(x){var prod=DB.products.find(function(p){return p.id===x.productId;});if(prod)prod.stock=Math.max(0,prod.stock+oQty(x));});
   var ids=l.map(function(x){return x.id;});
   DB.orders=DB.orders.filter(function(x){return ids.indexOf(x.id)<0;});
   logAct("删除订单",orderName(l[0])+(l.length>1?(" 等"+l.length+"件"):""));
@@ -4533,7 +4568,7 @@ function saveOrder(id,more){
   else{if(!productName){toast("请填写临时商品名称","err");return;}}
   {const ct=$("#f_contact").value.trim();const ex=DB.customers.find(x=>x.name===buy);if(ex){if(ct)ex.contact=ct;}else{DB.customers.push({id:pid(),name:buy,contact:ct,addr:"",note:""});}}
   var qty=+$("#f_qty").value||1;const price=+$("#f_price").value||0;
-  if(orderUnit){qty=qty*(typeof orderUnitFactor==="function"?orderUnitFactor():1);}
+  const _packF=((typeof orderUnitFactor==="function"?orderUnitFactor():1)||1);
   const buyerShip=+((document.getElementById("f_buyerShip")?document.getElementById("f_buyerShip").value:0)||0);
   const paid=qty*price+buyerShip;
   const commRate=+$("#f_commRate").value||0;
@@ -4542,6 +4577,8 @@ function saveOrder(id,more){
   const comm=Math.round(paid*commRate/100*100)/100;
   const extra=Math.round(paid*extraRate/100*100)/100;
   const st=$("#f_status").value;
+  const _ex={};
+  try{var _ea=document.getElementById("f_addr");if(_ea)_ex.addr=_ea.value.trim();var _ed=document.getElementById("f_deliver");if(_ed)_ex.deliverDate=_ed.value;var _ep=document.getElementById("f_plandue");if(_ep)_ex.planDue=_ep.value;var _em=document.getElementById("f_maker");if(_em)_ex.maker=_em.value.trim();var _ec=document.getElementById("f_cod");if(_ec)_ex.cod=!!_ec.checked;}catch(e){}
   let refund;
   if(REFUND_ST.includes(st)){refund={date:$("#f_refundDate").value||new Date().toISOString().slice(0,10),amount:+($("#f_refundAmount").value||0)||0,reason:$("#f_refundReason").value.trim()};}
   else{refund=null;}
@@ -4549,15 +4586,15 @@ function saveOrder(id,more){
   let creditCustomer="",creditDue="",creditPaid=0,creditPayments=[];
   if(pmode==="credit"){creditCustomer=$("#f_ccus").value.trim();creditDue="";if(!creditCustomer){toast("挂账请填写客户名","err");return;}}
   if(id){const old=DB.orders.find(x=>x.id===id);if(old&&pmode==="credit"){creditPaid=+old.creditPaid||0;creditPayments=old.creditPayments||[];}}
-  const obj={platformId,accountId,productId,isTemp,productName,variantName,orderUnit,tempCost,qty,price,buyerShip,commRate,comm,extraRate,extra,shipping,other,refund,payMode:pmode,creditCustomer,creditDue,creditPaid,creditPayments,
+  const obj={platformId,accountId,productId,isTemp,productName,variantName,orderUnit,tempCost,qty,price,buyerShip,commRate,comm,extraRate,extra,shipping,other,refund,packFactor:_packF,payMode:pmode,creditCustomer,creditDue,creditPaid,creditPayments,..._ex,
     buyer:buy,contact:$("#f_contact").value.trim(),note:$("#f_note").value.trim(),
     date:$("#f_date").value||new Date().toISOString().slice(0,10),status:st};
   if(!id)obj.seller=(CUR&&CUR.username)?CUR.username:"";
   if(id){const old=DB.orders.find(x=>x.id===id);
-    if(old){stockAdj(DB.products.find(p=>p.id===old.productId),old.variantName,effQty(old));}
-    const newProd=DB.products.find(p=>p.id===productId);stockAdj(newProd,obj.variantName,-effQty(obj));if(newProd&&newProd.stock<0)toast("⚠️ 库存不足，已超卖 "+(-newProd.stock)+" 件","warn");
+    if(old){stockAdj(DB.products.find(p=>p.id===old.productId),old.variantName,oQty(old));}
+    const newProd=DB.products.find(p=>p.id===productId);stockAdj(newProd,obj.variantName,-oQty(obj));if(newProd&&newProd.stock<0)toast("⚠️ 库存不足，已超卖 "+(-newProd.stock)+" 件","warn");
     Object.assign(old,obj);toast("订单已更新");}
-  else{const np=DB.products.find(p=>p.id===productId);stockAdj(np,obj.variantName,-effQty(obj));if(np&&np.stock<0)toast("⚠️ 库存不足，已超卖 "+(-np.stock)+" 件","warn");obj.seq=DB.orders.filter(x=>x.date===obj.date).length+1;DB.orders.push({id:pid(),...obj});localStorage.setItem("honghuLastP",platformId);localStorage.setItem("honghuLastA",accountId);if(more){toast("✅ 已加入 1 件："+(obj.productName||pname(obj.productId)||""));}else{toast("订单已登记，库存已扣减");}}
+  else{const np=DB.products.find(p=>p.id===productId);stockAdj(np,obj.variantName,-oQty(obj));if(np&&np.stock<0)toast("⚠️ 库存不足，已超卖 "+(-np.stock)+" 件","warn");obj.seq=DB.orders.filter(x=>x.date===obj.date).length+1;DB.orders.push({id:pid(),...obj});localStorage.setItem("honghuLastP",platformId);localStorage.setItem("honghuLastA",accountId);if(more){toast("✅ 已加入 1 件："+(obj.productName||pname(obj.productId)||""));}else{toast("订单已登记，库存已扣减");}}
   save();
   if(more){
     try{
@@ -4575,7 +4612,7 @@ function saveOrder(id,more){
 function delOrder(id){
   if(!confirm("确定删除该订单？已扣减的库存会自动回补。"))return;
   const o=DB.orders.find(x=>x.id===id);
-  if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+effQty(o));}
+  if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+oQty(o));}
   DB.orders=DB.orders.filter(x=>x.id!==id);logAct("删除订单","订单 "+id);save();render();toast("订单已删除，库存已回补","warn");
 }
 
@@ -5138,7 +5175,8 @@ function openPurchaseForm(id){
   const opts=x=>DB.products.map(p=>`<option value="${p.id}" ${x===p.id?"selected":""}>${esc(p.name)}（在库${p.stock}）</option>`).join("");
   if(id){const x=DB.purchases.find(y=>y.id===id);
     openModal(`<div class="modal-head"><h3>📥 编辑进货</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">
-      <div class="field"><label class="req">商品</label><select id="pu_prod">${opts(x.productId)}</select></div>
+      <div class="field"><label class="req">商品</label><select id="pu_prod" onchange="onPuProd()">${opts(x.productId)}</select></div>
+      <div class="field" id="pu_varWrap" style="display:none"><label class="req">规格（该商品有多规格，必须选）</label><select id="pu_var">${(x.variantName?`<option value="${esc(x.variantName)}" selected>${esc(x.variantName)}</option>`:"" )}</select></div>
       <div class="field"><div class="row"><div><label class="req">数量</label><input id="pu_qty" type="number" value="${x.qty}"></div><div><label class="req">采购单价(¥)</label><input id="pu_cost" type="number" step="0.01" value="${x.unitCost}"></div></div></div>
       <div class="field"><label>供应商</label><input id="pu_supplier" value="${esc(x.supplier||"")}"></div>
       <div class="field"><div class="row"><div><label>计划付款日</label><input id="pu_planDue" type="date" value="${x.planDue||""}"></div><div><label>收货日期</label><input id="pu_recv" type="date" value="${x.recvDate||""}"></div></div></div>
@@ -5149,7 +5187,8 @@ function openPurchaseForm(id){
       </div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="savePurchase('${id}')">保存修改</button></div>`);
   }else{
     openModal(`<div class="modal-head"><h3>📥 进货入库</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">
-      <div class="field"><label class="req">商品</label><select id="pu_prod">${opts("")}</select></div>
+      <div class="field"><label class="req">商品</label><select id="pu_prod" onchange="onPuProd()">${opts("")}</select></div>
+      <div class="field" id="pu_varWrap" style="display:none"><label class="req">规格（该商品有多规格，必须选）</label><select id="pu_var"></select></div>
       <div class="field"><div class="row"><div><label class="req">数量</label><input id="pu_qty" type="number" value="1"></div><div><label class="req">采购单价(¥)</label><input id="pu_cost" type="number" step="0.01"></div></div></div>
       <div class="field"><label>供应商</label><input id="pu_supplier" placeholder="如：XX配件厂"></div>
       <div class="field"><div class="row"><div><label>计划付款日</label><input id="pu_planDue" type="date" value=""></div><div><label>收货日期</label><input id="pu_recv" type="date" value=""></div></div></div>
@@ -5160,22 +5199,51 @@ function openPurchaseForm(id){
       </div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="savePurchase()">确认入库</button></div>`);
   }
   (()=>{const d=$("#pu_date");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);})();
+  (()=>{try{onPuProd();}catch(e){}})();
+}
+function onPuProd(){
+  try{
+    var sel=document.getElementById("pu_prod"),wrap=document.getElementById("pu_varWrap"),vs=document.getElementById("pu_var");
+    if(!sel||!wrap||!vs)return;
+    var p=(DB.products||[]).find(function(x){return x.id===sel.value;});
+    var keep=vs.value;
+    if(p&&p.variants&&p.variants.length){
+      wrap.style.display="";
+      if(!vs.options.length||vs.getAttribute("data-pid")!==p.id){
+        vs.innerHTML=p.variants.map(function(v){return '<option value="'+esc(v.name||"")+'"'+((v.name||"")===keep?" selected":"")+">"+esc(v.name||"")+"（库存 "+((v.stock==null?0:v.stock))+"）</option>";}).join("");
+        vs.setAttribute("data-pid",p.id);
+      }
+    }else{ wrap.style.display="none"; vs.innerHTML=""; vs.removeAttribute("data-pid"); }
+  }catch(e){}
 }
 function savePurchase(id){
   const prodId=$("#pu_prod").value;if(!prodId){toast("请选择商品","err");return;}
   const qty=+$("#pu_qty").value||0;const uc=+$("#pu_cost").value||0;
   if(qty<=0){toast("请填写有效数量","err");return;}
   if(uc<=0){toast("请填写采购单价","err");return;}
-  const obj={productId:prodId,qty,unitCost:uc,supplier:$("#pu_supplier").value.trim(),note:$("#pu_note").value.trim(),date:$("#pu_date").value||new Date().toISOString().slice(0,10),planDue:($("#pu_planDue")?$("#pu_planDue").value:""),recvDate:($("#pu_recv")?$("#pu_recv").value:""),addr:($("#pu_addr")?$("#pu_addr").value.trim():""),taxRate:+(($("#pu_tax")||{}).value||0)||0,discount:+(($("#pu_disc")||{}).value||0)||0};
-  if(id){const old=DB.purchases.find(x=>x.id===id);const op=DB.products.find(p=>p.id===old.productId);if(op)op.stock=Math.max(0,op.stock-old.qty);Object.assign(old,obj);}
+  const _pp=DB.products.find(p=>p.id===prodId);
+  let vname="";
+  if(_pp&&_pp.variants&&_pp.variants.length){ vname=((document.getElementById("pu_var")||{}).value||""); if(!vname){toast("该商品有多规格，请选择入库到哪个规格","err");return;} }
+  const obj={productId:prodId,qty,unitCost:uc,variantName:vname,supplier:$("#pu_supplier").value.trim(),note:$("#pu_note").value.trim(),date:$("#pu_date").value||new Date().toISOString().slice(0,10),planDue:($("#pu_planDue")?$("#pu_planDue").value:""),recvDate:($("#pu_recv")?$("#pu_recv").value:""),addr:($("#pu_addr")?$("#pu_addr").value.trim():""),taxRate:+(($("#pu_tax")||{}).value||0)||0,discount:+(($("#pu_disc")||{}).value||0)||0};
+  if(id){const old=DB.purchases.find(x=>x.id===id);if(old)puAdjStock(old.productId,old.variantName,-old.qty);Object.assign(old,obj);}
   else{DB.purchases.push({id:pid(),...obj});}
+  puAdjStock(prodId,vname,qty);
   const prod=DB.products.find(p=>p.id===prodId);
-  if(prod){prod.stock=(prod.stock||0)+qty;prod.cost=uc;}
+  if(prod&&uc>0)prod.cost=uc;
+  try{normStocks();}catch(e){}
   save();closeModal();render();toast(id?"进货已更新":"已入库，库存已增加");
+}
+function puAdjStock(prodId,vname,delta){
+  try{
+    var p=DB.products.find(function(x){return x.id===prodId;});if(!p)return;
+    if(vname&&p.variants&&p.variants.length){ var vv=p.variants.find(function(v){return (v.name||"")===vname;}); if(vv)vv.stock=Math.max(0,(+vv.stock||0)+delta); else p.stock=Math.max(0,(+p.stock||0)+delta); }
+    else p.stock=Math.max(0,(+p.stock||0)+delta);
+    try{normStocks();}catch(e){}
+  }catch(e){}
 }
 function delPurchase(id){
   if(!confirm("确定删除该进货记录？对应库存将扣回。"))return;
-  const x=DB.purchases.find(y=>y.id===id);if(x){const prod=DB.products.find(p=>p.id===x.productId);if(prod)prod.stock=Math.max(0,prod.stock-x.qty);}
+  const x=DB.purchases.find(y=>y.id===id);if(x){puAdjStock(x.productId,x.variantName,-x.qty);}
   DB.purchases=DB.purchases.filter(y=>y.id!==id);save();render();toast("进货已删除，库存已扣回","warn");
 }
 function purchaseCsv(){return DB.purchases.map(x=>{const p=DB.products.find(y=>y.id===x.productId);return {日期:x.date,商品:p?p.name:"未知",数量:x.qty,采购单价:+x.unitCost,金额:+(x.qty*x.unitCost).toFixed(2),供应商:x.supplier||"",备注:x.note||""};});}
@@ -5217,13 +5285,13 @@ function cuSelAll(on){document.querySelectorAll("#creditBody .cuChk").forEach(fu
 function delCreditOrder(id){
   if(!confirm("确定删除这条挂账记录？（对应订单会被删除，已扣库存自动回补）"))return;
   const o=DB.orders.find(x=>x.id===id);
-  if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+effQty(o));}
+  if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+oQty(o));}
   const _od=DB.orders.find(x=>x.id===id);logAct("删除挂账","客户 "+((_od&&_od.creditCustomer)||"")+" 应收 "+((_od&&orderPaid(_od))||0));DB.orders=DB.orders.filter(x=>x.id!==id);save();delete cuSel[id];toast("已删除该挂账记录，库存已回补","warn");renderCreditTbl();
 }
 function delCreditSel(){
   const ids=Object.keys(cuSel);if(!ids.length){toast("请先勾选要删除的记录","err");return;}
   if(!confirm("确定删除选中的 "+ids.length+" 条挂账记录？（对应订单会删除，库存回补）"))return;
-  ids.forEach(function(id){const o=DB.orders.find(x=>x.id===id);if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+effQty(o));}});
+  ids.forEach(function(id){const o=DB.orders.find(x=>x.id===id);if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+oQty(o));}});
   logAct("批量删除挂账",ids.length+" 条");DB.orders=DB.orders.filter(x=>ids.indexOf(x.id)<0);cuSel={};save();toast("已删除 "+ids.length+" 条，库存已回补","warn");renderCreditTbl();
 }
 function rebuildCuA(){var s=document.getElementById("cu_a");if(!s)return;s.innerHTML='<option value="all">全部账号</option>'+DB.accounts.filter(a=>canSee(a.id)&&(cF.p==="all"||a.platformId===cF.p)).map(a=>'<option value="'+a.id+'" '+(cF.a===a.id?'selected':'')+'>'+esc(a.name)+'</option>').join('');}
