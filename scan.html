@@ -104,6 +104,21 @@ const API = location.origin;
 /* 访问口令：手机通过 8443/隧道 打开时，地址里的 ?k=口令 会自动带到接口 */
 function apiTok(){ try{ var m=location.search.match(/[?&]k=([^&]+)/); if(m){ var t=decodeURIComponent(m[1]); localStorage.setItem("honghuTok",t); return t; } return localStorage.getItem("honghuTok")||""; }catch(e){ return ""; } }
 const HHTOK=apiTok();
+/* 扫码即登录：网址里带 #acc=base64(邮箱|密码) 时自动保存并登录，然后从地址栏抹掉 */
+(function(){
+  try{
+    var m=(location.hash||'').match(/acc=([^&]+)/);
+    if(!m) return;
+    var s='';
+    try{ s=decodeURIComponent(escape(atob(m[1]))); }catch(e){ try{ s=atob(m[1]); }catch(e2){ return; } }
+    var a=s.split('|');
+    if(a.length>=2&&a[0]&&a[1]){
+      try{ localStorage.setItem('honghuSyncEmail',a[0]); localStorage.setItem('honghuSyncPass',a[1]); }catch(e){}
+      try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+    }
+  }catch(e){}
+})();
+
 function apiUrl(p){ if(!HHTOK)return API+p; return API+p+(p.indexOf("?")>=0?"&":"?")+"k="+encodeURIComponent(HHTOK); }
 const CLOUD_URL='https://jzclolmbxdtmfrylrifr.supabase.co';
 const CLOUD_KEY='sb_publishable_DlerdBhrH7ulJPcW2Zj6Rg_QmsH15o2';
