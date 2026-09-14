@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-14d</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-14e</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2801,9 +2801,9 @@ function numFix(db){
     };
     Object.keys(M).forEach(function(k){
       (db[k]||[]).forEach(function(o){
-        M[k].forEach(function(f){ if(o[f]!==undefined&&o[f]!==null&&o[f]!==""&&typeof o[f]==="string"){ var n=num(o[f]); if(n!=null)o[f]=n; } });
-        if(o.refund&&typeof o.refund.amount==="string"){var r=num(o.refund.amount);if(r!=null)o.refund.amount=r;}
-        (o.payments||[]).forEach(function(p){ if(p&&typeof p.amount==="string"){var q=num(p.amount);if(q!=null)p.amount=q;} });
+        M[k].forEach(function(f){ if(o[f]!==undefined&&o[f]!==null&&o[f]!==""&&typeof o[f]==="string"){ var n=toNum(o[f]); if(n!=null)o[f]=n; } });
+        if(o.refund&&typeof o.refund.amount==="string"){var r=toNum(o.refund.amount);if(r!=null)o.refund.amount=r;}
+        (o.payments||[]).forEach(function(p){ if(p&&typeof p.amount==="string"){var q=toNum(p.amount);if(q!=null)p.amount=q;} });
       });
     });
   }catch(e){}
@@ -2828,7 +2828,7 @@ function pad2(n){return (n<10?"0":"")+n;}
 function todayStr(d){var x=d?new Date(d):new Date();if(isNaN(x.getTime()))return "";return x.getFullYear()+"-"+pad2(x.getMonth()+1)+"-"+pad2(x.getDate());}
 function tsLocal(iso){try{var d=new Date(iso);if(isNaN(d.getTime()))return String(iso==null?"":iso);return todayStr(d)+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds());}catch(e){return String(iso==null?"":iso);}}
 /* 解析数值：容忍全角数字、千分位逗号、￥/空格；非法或空 -> null */
-function num(v){
+function toNum(v){
   if(v==null)return null;
   if(typeof v==="number")return isFinite(v)?v:null;
   var s=String(v).replace(/[０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-65248);}).replace(/[,，\s￥¥元]/g,"").trim();
@@ -2836,12 +2836,12 @@ function num(v){
   var n=Number(s);
   return isFinite(n)?n:null;
 }
-function numOr(v,def){var n=num(v);return n==null?(def===undefined?0:def):n;}
-function money(v){var n=num(v);return n==null?null:Math.round(n*100)/100;}
+function numOr(v,def){var n=toNum(v);return n==null?(def===undefined?0:def):n;}
+function money(v){var n=toNum(v);return n==null?null:Math.round(n*100)/100;}
 /* 带提示的数值校验：格式不对就提示并返回 NaN（调用方 if(isNaN(x))return;） */
 function chkNum(v,label,opt){
   var raw=String(v==null?"":v).trim();
-  var n=num(v);
+  var n=toNum(v);
   if(n==null){
     if(raw)toast((label||"这个数值")+"格式不对，请检查（不要带文字/单位/千分位逗号）","err");
     else if(opt&&opt.required)toast("请填写"+(label||"数值"),"err");
@@ -2897,11 +2897,21 @@ function toast(msg,type="ok"){
 function openModal(html){$("#modal").innerHTML=html;$("#overlay").classList.add("show");try{if(document.getElementById("f_unit")&&typeof onSetUnit==="function")onSetUnit();}catch(e){}}
 function closeModal(){$("#overlay").classList.remove("show");$("#modal").innerHTML="";}
 $("#overlay").addEventListener("click",e=>{/* 点遮罩不关闭，避免误触丢失输入 */});
-function softRefresh(){ try{ closeModal(); if(typeof cloudPoll==="function")cloudPoll(); if(typeof pollLocalServer==="function")pollLocalServer(); render(); if(typeof animate==="function")animate(); toast("已刷新（若仍卡，按 F5 重新载入）"); }catch(e){ try{ location.reload(); }catch(_){} } }
+/* 界面复位：关弹窗、清浮层、去遮罩（“点不动/打不进字”时的急救） */
+function hardResetUI(){
+  try{ closeModal(); }catch(e){}
+  try{ var co=document.getElementById('custOv'); if(co)co.remove(); }catch(e){}
+  try{ var so=document.getElementById('scanOv'); if(so)so.remove(); }catch(e){}
+  try{ [].slice.call(document.querySelectorAll('.show')).forEach(function(el){ el.classList.remove('show'); }); }catch(e){}
+  try{ var m=document.getElementById('modal'); if(m)m.innerHTML=''; }catch(e){}
+  try{ var ov=document.getElementById('overlay'); if(ov)ov.style.display=''; }catch(e){}
+  try{ if(document.body){ document.body.style.overflow=''; } }catch(e){}
+}
+function softRefresh(){ try{ hardResetUI(); if(typeof cloudPoll==="function")cloudPoll(); if(typeof pollLocalServer==="function")pollLocalServer(); render(); if(typeof animate==="function")animate(); toast("已刷新界面（若仍卡，按 F5 重新载入）"); }catch(e){ try{ location.reload(); }catch(_){} } }
 function hardRefresh(){ try{ location.reload(); }catch(e){} }
 document.addEventListener("keydown",e=>{
   if(e.key==="F5"||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="r")){e.preventDefault();hardRefresh();return;}
-  if(e.key==="Escape"){closeModal();return;}
+  if(e.key==="Escape"){hardResetUI();return;}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="n"){e.preventDefault();openOrderForm();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){const btn=document.querySelector("#modal .btn-primary[data-save]");if(btn){e.preventDefault();btn.click();}}
 });
@@ -3681,7 +3691,7 @@ function openProductForm(id){
 function saveProduct(id){
   const name=$("#f_name").value.trim();
   if(!name){toast("请填写商品名称","err");return;}
-  try{ var _chk=[["f_bcost","成本价"],["f_bprice","售价"],["f_pairCost","成对成本"],["f_pairPrice","成对售价"],["f_oneCost","单个成本"],["f_onePrice","单个售价"],["f_stock","库存"],["f_min","安全库存"]]; for(var _ci=0;_ci<_chk.length;_ci++){ var _el=document.getElementById(_chk[_ci][0]); if(_el){ var _sv=String(_el.value||"").trim(); if(_sv&&num(_sv)==null){ toast(_chk[_ci][1]+"格式不对（不要带文字/单位/千分位逗号）","err"); return; } } } }catch(e){}
+  try{ var _chk=[["f_bcost","成本价"],["f_bprice","售价"],["f_pairCost","成对成本"],["f_pairPrice","成对售价"],["f_oneCost","单个成本"],["f_onePrice","单个售价"],["f_stock","库存"],["f_min","安全库存"]]; for(var _ci=0;_ci<_chk.length;_ci++){ var _el=document.getElementById(_chk[_ci][0]); if(_el){ var _sv=String(_el.value||"").trim(); if(_sv&&toNum(_sv)==null){ toast(_chk[_ci][1]+"格式不对（不要带文字/单位/千分位逗号）","err"); return; } } } }catch(e){}
   const cat=catValue();
   const brand=brandValue();
   const obj={name,sku:$("#f_sku").value.trim(),barcode:($("#f_barcode")?$("#f_barcode").value.trim():""),unit:($("#f_unit").value.trim()||"个"),category:cat,brand,img:_prodImg||"",variants:(function(){var a=[];document.querySelectorAll("#varRows .varRow").forEach(function(r){var n=r.querySelector(".varName").value.trim();var c2=r.querySelector(".varCode").value.trim();var st=r.querySelector(".varStock")?(+r.querySelector(".varStock").value||0):0;var pq=r.querySelector(".varPq")?(+r.querySelector(".varPq").value||0):0;var spq=r.querySelector(".varSpq")?(+r.querySelector(".varSpq").value||0):0;if(n||c2)a.push({name:n,barcode:c2,stock:st,pq:pq,spq:spq});});return a;})(),units:(function(){var a=[];document.querySelectorAll("#unitRows .unitRow").forEach(function(r){var n=r.querySelector(".unitName").value.trim();var f=+r.querySelector(".unitFactor").value||0;var pr=r.querySelector(".unitPrice")?(+r.querySelector(".unitPrice").value||0):0;var co=r.querySelector(".unitCost")?(+r.querySelector(".unitCost").value||0):0;if(n&&f)a.push({name:n,factor:f,price:pr,cost:co});});return a;})(),
@@ -4359,8 +4369,8 @@ function saveOrderNew(printAfter){
     var _tp=(oiMode()==="temp");
     var items=_tp?_oi.filter(function(it){return (it.name||"").trim();}):_oi.filter(function(it){return it.pid;});
     if(!items.length){toast(_tp?"请至少填写一个临时商品名称":"请至少添加一件商品","err");return;}
-    if(items.some(function(it){return String(it.qty==null?"":it.qty).trim()!==""&&num(it.qty)==null;})){toast("数量格式不对（不要带文字/单位）","err");return;}
-    if(items.some(function(it){return String(it.price==null?"":it.price).trim()!==""&&num(it.price)==null;})){toast("单价格式不对（不要带文字/单位）","err");return;}
+    if(items.some(function(it){return String(it.qty==null?"":it.qty).trim()!==""&&toNum(it.qty)==null;})){toast("数量格式不对（不要带文字/单位）","err");return;}
+    if(items.some(function(it){return String(it.price==null?"":it.price).trim()!==""&&toNum(it.price)==null;})){toast("单价格式不对（不要带文字/单位）","err");return;}
     if(items.some(function(it){return numOr(it.qty,0)<=0;})){toast("数量要大于 0","err");return;}
     if(items.some(function(it){return numOr(it.price,0)<0||numOr(it.price,0)>9999999;})){toast("单价不正确（不能为负或过大）","err");return;}
     var _carry={},_defStatus="待发货";
@@ -4433,8 +4443,8 @@ function returnOrder(id){
 function doReturn(id){
   try{
     var o=DB.orders.find(function(x){return x.id===id;});if(!o){toast("订单不存在","err");return;}
-    if(String(document.getElementById("rt_qty").value||"").trim()&&num(document.getElementById("rt_qty").value)==null){toast("退货数量格式不对","err");return;}
-    if(String(document.getElementById("rt_amt").value||"").trim()&&num(document.getElementById("rt_amt").value)==null){toast("退款金额格式不对","err");return;}
+    if(String(document.getElementById("rt_qty").value||"").trim()&&toNum(document.getElementById("rt_qty").value)==null){toast("退货数量格式不对","err");return;}
+    if(String(document.getElementById("rt_amt").value||"").trim()&&toNum(document.getElementById("rt_amt").value)==null){toast("退款金额格式不对","err");return;}
     var qty=money(document.getElementById("rt_qty").value)||0;
     var amt=money(document.getElementById("rt_amt").value)||0;
     var date=document.getElementById("rt_date").value||todayStr();
@@ -4759,7 +4769,7 @@ function openDebtForm(id){
 function saveDebt(id){
   try{
     var name=document.getElementById("d_name").value.trim();if(!name){toast("请填写借款人","err");return;}
-    if(String(document.getElementById("d_amt").value||"").trim()&&num(document.getElementById("d_amt").value)==null){toast("借款金额格式不对","err");return;}
+    if(String(document.getElementById("d_amt").value||"").trim()&&toNum(document.getElementById("d_amt").value)==null){toast("借款金额格式不对","err");return;}
     var amt=money(document.getElementById("d_amt").value)||0;if(amt<=0){toast("请填写借款金额","err");return;}
     var obj={name:name,contact:document.getElementById("d_contact").value.trim(),amount:amt,date:document.getElementById("d_date").value||todayStr(),dueDate:document.getElementById("d_due").value||"",paid:money(document.getElementById("d_paid").value)||0,note:document.getElementById("d_note").value.trim()};
     DB.debts=DB.debts||[];
@@ -4781,7 +4791,7 @@ function payDebt(id){
 function doDebtPay(id){
   try{
     var d=(DB.debts||[]).find(function(x){return x.id===id;});if(!d)return;
-    if(String(document.getElementById("dp_amt").value||"").trim()&&num(document.getElementById("dp_amt").value)==null){toast("还款金额格式不对","err");return;}
+    if(String(document.getElementById("dp_amt").value||"").trim()&&toNum(document.getElementById("dp_amt").value)==null){toast("还款金额格式不对","err");return;}
     var amt=money(document.getElementById("dp_amt").value)||0;if(amt<=0){toast("请填写还款金额","err");return;}
     d.paid=(+d.paid||0)+amt;d.payments=d.payments||[];
     d.payments.push({date:document.getElementById("dp_date").value||todayStr(),amount:amt,note:document.getElementById("dp_note").value.trim()});
@@ -4814,8 +4824,8 @@ function saveOrder(id,more){
   if(!isTemp){if(!productId){toast("请选择商品","err");return;}}
   else{if(!productName){toast("请填写临时商品名称","err");return;}}
   {const ct=$("#f_contact").value.trim();const ex=DB.customers.find(x=>x.name===buy);if(ex){if(ct)ex.contact=ct;}else{DB.customers.push({id:pid(),name:buy,contact:ct,addr:"",note:""});}}
-  if(String($("#f_qty").value||"").trim()&&num($("#f_qty").value)==null){toast("数量格式不对","err");return;}
-  if(String($("#f_price").value||"").trim()&&num($("#f_price").value)==null){toast("单价格式不对","err");return;}
+  if(String($("#f_qty").value||"").trim()&&toNum($("#f_qty").value)==null){toast("数量格式不对","err");return;}
+  if(String($("#f_price").value||"").trim()&&toNum($("#f_price").value)==null){toast("单价格式不对","err");return;}
   var qty=numOr($("#f_qty").value,1);const price=money($("#f_price").value)||0;
   const _packF=((typeof orderUnitFactor==="function"?orderUnitFactor():1)||1);
   const buyerShip=numOr((document.getElementById("f_buyerShip")||{}).value,0);
@@ -5246,7 +5256,7 @@ function syncExpAcct(){
   $("#e_a").innerHTML=opts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join("")||'<option value="">无账号</option>';
 }
 function saveExpense(id){
-  if(String($("#e_amt").value||"").trim()&&num($("#e_amt").value)==null){toast("金额格式不对（不要带文字/单位/千分位逗号）","err");return;}
+  if(String($("#e_amt").value||"").trim()&&toNum($("#e_amt").value)==null){toast("金额格式不对（不要带文字/单位/千分位逗号）","err");return;}
   const amt=money($("#e_amt").value)||0;
   if(!(amt>0)){toast("请填写有效金额","err");return;}
   const obj={platformId:$("#e_p").value,accountId:$("#e_a").value||"",cat:$("#e_cat").value,amount:amt,note:$("#e_note").value.trim(),date:$("#e_date").value||todayStr()};
@@ -5490,8 +5500,8 @@ function onPuProd(){
 }
 function savePurchase(id){
   const prodId=$("#pu_prod").value;if(!prodId){toast("请选择商品","err");return;}
-  if(String($("#pu_qty").value||"").trim()&&num($("#pu_qty").value)==null){toast("数量格式不对","err");return;}
-  if(String($("#pu_cost").value||"").trim()&&num($("#pu_cost").value)==null){toast("采购单价格式不对","err");return;}
+  if(String($("#pu_qty").value||"").trim()&&toNum($("#pu_qty").value)==null){toast("数量格式不对","err");return;}
+  if(String($("#pu_cost").value||"").trim()&&toNum($("#pu_cost").value)==null){toast("采购单价格式不对","err");return;}
   const qty=money($("#pu_qty").value)||0;const uc=money($("#pu_cost").value)||0;
   if(qty<=0){toast("请填写有效数量","err");return;}
   if(uc<=0){toast("请填写采购单价","err");return;}
@@ -5621,7 +5631,7 @@ function collectCredit(name){
   (()=>{const d=$("#cc_date");if(d&&!d.value)d.value=todayStr();})();
 }
 function saveCollect(name){
-  if(String($("#cc_amt").value||"").trim()&&num($("#cc_amt").value)==null){toast("收款金额格式不对","err");return;}
+  if(String($("#cc_amt").value||"").trim()&&toNum($("#cc_amt").value)==null){toast("收款金额格式不对","err");return;}
   let amt=money($("#cc_amt").value)||0;const dt=$("#cc_date").value||todayStr();
   if(amt<=0){toast("请填写收款金额","err");return;}
   const targets=DB.orders.filter(o=>o.payMode==="credit"&&o.creditCustomer===name&&canSee(o.accountId)&&(orderPaid(o)-(+o.creditPaid||0))>0.001).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
@@ -5695,12 +5705,25 @@ function normStocks(){try{(DB.products||[]).forEach(function(p){if(p&&p.variants
 function render(){normStocks();normPrices(DB);
   const allowed=navForRole().map(v=>v[0]);
   if(!allowed.includes(curView))curView="dash";
-  const v={dash:vDash,inventory:vInventory,orders:vOrders,recon:vRecon,expense:vExpense,platform:vPlatform,rates:vRates,profit:vProfit,purchase:vPurchase,credit:vCredit,customers:vCustomers,security:vSecurity,debts:vDebts}[curView]();
+  let v="";
+  try{
+    v={dash:vDash,inventory:vInventory,orders:vOrders,recon:vRecon,expense:vExpense,platform:vPlatform,rates:vRates,profit:vProfit,purchase:vPurchase,credit:vCredit,customers:vCustomers,security:vSecurity,debts:vDebts}[curView]();
+  }catch(e){
+    v='<div class="topbar"><div class="t-left"><h2>⚠️ 这个页面出了点问题</h2><p>'+esc(String(e&&e.message||e))+'</p></div></div><div class="card" style="margin:20px 26px"><div style="font-size:13px;line-height:2;color:var(--muted)">其他页面不受影响。可按 <b>F5</b> 重新载入，或点左下角 <b>🔄 刷新</b>；如果一直这样，把这句话发给技术。</div></div>';
+    try{ logAct("页面渲染失败",curView+": "+String(e&&e.message||e)); }catch(_){}
+  }
   renderNav();ensureCloudSync();
   $("#view").innerHTML=v;
   document.querySelectorAll(".nav a").forEach(a=>a.classList.toggle("active",a.dataset.view===curView));
   animate();
 }
+/* 看门狗：每隔 2 秒检查一次，避免出现“看不见却挡着”的空遮罩 */
+setInterval(function(){
+  try{
+    var ov=document.getElementById('overlay'), m=document.getElementById('modal');
+    if(ov&&ov.classList&&ov.classList.contains('show')&&m&&!String(m.innerHTML||'').trim()){ ov.classList.remove('show'); }
+  }catch(e){}
+},2000);
 function animate(){
   requestAnimationFrame(()=>{
     let toAnimate=[];
