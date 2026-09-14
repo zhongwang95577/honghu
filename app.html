@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15a</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15b</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2553,6 +2553,21 @@ const API=location.protocol==="file:"?"http://localhost:8899":location.origin;
 function apiTok(){ try{ var m=location.search.match(/[?&]k=([^&]+)/); if(m){ var t=decodeURIComponent(m[1]); localStorage.setItem("honghuTok",t); return t; } return localStorage.getItem("honghuTok")||""; }catch(e){ return ""; } }
 let HHTOK=apiTok();
 function apiUrl(p){ var t=HHTOK||apiTok(); if(!t)return API+p; return API+p+(p.indexOf("?")>=0?"&":"?")+"k="+encodeURIComponent(t); }
+/* 扫码即登录：网址里带 #acc=base64(邮箱|密码) 时自动保存并登录，然后从地址栏抹掉 */
+(function(){
+  try{
+    var m=(location.hash||'').match(/acc=([^&]+)/);
+    if(!m) return;
+    var s='';
+    try{ s=decodeURIComponent(escape(atob(m[1]))); }catch(e){ try{ s=atob(m[1]); }catch(e2){ return; } }
+    var a=s.split('|');
+    if(a.length>=2&&a[0]&&a[1]){
+      try{ localStorage.setItem('honghuSyncEmail',a[0]); localStorage.setItem('honghuSyncPass',a[1]); }catch(e){}
+      try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+    }
+  }catch(e){}
+})();
+
 /* 自动读取“电脑上的本地配置”（同步配置.json）：口令 + 云端账号 → 新电脑/新同事不用手填 */
 let _cfgTried=false;
 async function autoSyncCfg(force){
