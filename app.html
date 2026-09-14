@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15e</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15f</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2637,6 +2637,30 @@ function startRealtime(){
     _rtWs.onerror=function(){};
   }catch(e){}
 }
+/* 云端数据比本机多时 → 提示一键同步（避免一直用旧缓存） */
+async function cloudCheckNewer(){
+  try{
+    const t=await cloudMeta(); if(!t)return;
+    const cd=await cloudLoad(); if(!cd||!cd.orders)return;
+    const cMore=((cd.products||[]).length)>((DB.products||[]).length)||((cd.orders||[]).length)>((DB.orders||[]).length)||((cd.customers||[]).length)>((DB.customers||[]).length);
+    if(cMore){
+      DB=cd;
+      try{ save(); }catch(e){}
+      try{ render(); }catch(e){}
+      try{ toast("☁️ 已自动同步云端最新数据"); }catch(e){}
+      try{ updateCloudBadge(); }catch(e){}
+    }
+  }catch(e){}
+}
+function forcePullCloud(){
+  (async function(){
+    try{
+      const cd=await cloudLoad();
+      if(cd&&cd.orders){ DB=cd; try{save();}catch(e){} render(); toast("✅ 已从云端同步最新数据"); updateCloudBadge(); }
+      else { toast("云端暂时读不到数据（检查网络或云端登录）","warn"); }
+    }catch(e){ toast("同步失败："+e.message,"err"); }
+  })();
+}
 function ensureCloudSync(){
   if(!cloudEnabled()||!CUR){updateCloudBadge();return;}
   if(_cloudSyncStarted)return;
@@ -2647,6 +2671,8 @@ function ensureCloudSync(){
   window.addEventListener("focus",cloudPoll);
   startRealtime();
   updateCloudBadge();
+  setTimeout(function(){try{cloudCheckNewer();}catch(e){}},3000);
+  setInterval(function(){try{cloudCheckNewer();}catch(e){}},120000);
 }
 /* ===== 云端同步账号（云端开了 RLS 后必须登录；没配账号时仍按老方式用公开 key，向后兼容）===== */
 let _jwt=null,_jwtExp=0;
@@ -5933,6 +5959,7 @@ async function boot(){
   try{const r=await fetch(apiUrl("/load"),{cache:"no-store"});if(r.ok){const d=await r.json();if(d&&d.orders){const remote=+d.savedAt||0,local=+DB.savedAt||0;if(dbIsEmpty()||remote>local){DB=d;save();}}}}catch(e){}
   if(cloudEnabled()){try{const cd=await cloudLoad();if(cd&&cd.orders){const remote=+cd.savedAt||0,local=+DB.savedAt||0;if(dbIsEmpty()||remote>local){DB=cd;save();}}}catch(e){}}
   try{ const _ct=await cloudMeta(); if(_ct&&(+DB.savedAt||0)>_ct+3000){ await cloudSave(); } }catch(e){}
+  try{ if(localStorage.getItem('honghuForcePull')){ localStorage.removeItem('honghuForcePull'); const _cd=await cloudLoad(); if(_cd&&_cd.orders){ DB=_cd; save(); } } }catch(e){}
   DB.users=DB.users||[];
   const lastU=sessionStorage.getItem("honghuU");CUR=DB.users.find(x=>x.id===lastU)||null;
   if(!CUR){
