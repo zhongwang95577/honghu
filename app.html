@@ -2599,6 +2599,7 @@ function updateCloudBadge(msg){
   const el=document.getElementById("cloudBadge");if(!el)return;
   if(window._lsWarn&&!msg){el.innerHTML='<span style="color:var(--red)">⚠️ 本机缓存写入失败（数据已存服务器）</span>';return;}
   if(!cloudEnabled()){el.textContent="☁️ 未连接云端";return;}
+  if(typeof syncAccSet==="function"&&!syncAccSet()){ el.innerHTML='<span style="color:var(--amber);cursor:pointer" onclick="openCloudLogin()">☁️ 云端未登录 · 点这里登录</span>'; return; }
   el.innerHTML=msg||'<span style="color:var(--green)">☁️ 云端已连接 · 自动同步中</span>';
 }
 async function cloudMeta(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return 0;try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table+"?select=updated_at&id=eq.main",{headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key)}});if(!r.ok)return 0;const rows=await r.json();return rows&&rows[0]&&rows[0].updated_at?(Date.parse(rows[0].updated_at)||0):0;}catch(e){return 0;}}
