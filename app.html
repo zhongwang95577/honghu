@@ -4163,6 +4163,7 @@ function saveOrderNew(printAfter){
         buyer:buy,contact:contact,note:note,addr:addr,deliverDate:deliver,planDue:plandue,date:date,status:_carryStatus,gid:gid,maker:((document.getElementById("f_maker")&&document.getElementById("f_maker").value.trim())||"")};
       obj.seller=(CUR&&CUR.username)?CUR.username:"";
       obj.packFactor=(_tp?1:oiFactor(it));
+      try{ if(_old&&_old.att&&_old.att.length)obj.att=_old.att; }catch(e){}   /* 编辑多行单时保留原附件 */
       if(!_tp)stockAdj(p,obj.variantName,-(effQty(obj)*(obj.packFactor||1)));
       obj.seq=DB.orders.filter(function(x){return x.date===obj.date;}).length+1;
       var _nid=pid();if(!firstId)firstId=_nid;DB.orders.push(Object.assign({id:_nid},obj));
