@@ -394,7 +394,7 @@ async function submitScan(auto){
     if(continuous){ lastCode=""; if(!running){/*保持相机*/} }
     else { document.getElementById("f_bc").focus(); }
   } else {
-    toast('<span class="err">入库失败，请检查网络/云端</span>');
+    toast(_needTok ? '<span class="err">需要访问口令：请用带口令的网址打开一次（电脑上「手机同步地址.txt」里的链接）</span>' : '<span class="err">入库失败，请检查网络/云端</span>')
   }
   btn.disabled=false;btn.textContent="✅ 入库（同步到库存）";
 }
