@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15d</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15e</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2579,7 +2579,9 @@ async function autoSyncCfg(force){
     const j=await r.json();
     let changed=false;
     if(j&&j.tok){ try{ localStorage.setItem("honghuTok",String(j.tok)); HHTOK=String(j.tok); changed=true; }catch(e){} }
-    if(j&&j.email&&j.pass&&!syncAccSet()){ saveSyncAcc(String(j.email),String(j.pass)); changed=true; }
+    if(j&&j.email&&j.pass){
+      if(syncEmail()!==String(j.email)||syncPass()!==String(j.pass)){ saveSyncAcc(String(j.email),String(j.pass)); changed=true; }
+    }
     return changed;
   }catch(e){ return false; }
 }
@@ -2608,6 +2610,9 @@ async function cloudPoll(){
     const d=await cloudLoad();
     if(d&&d.orders){DB=d;DB.savedAt=Math.max(+DB.savedAt||0,t);try{localStorage.setItem("gaiMallDB",JSON.stringify(DB));}catch(e){}try{fetch(apiUrl("/save"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:DB})}).catch(()=>{});}catch(e){}render();toast("☁️ 已同步其他同事的最新数据");}
     _pulling=false;updateCloudBadge();
+  }
+  else if(!_pulling&&(+DB.savedAt||0)>t+3000){
+    try{ const r=await cloudSave(); updateCloudBadge(r&&r.ok?undefined:"☁️ 同步暂时失败"); }catch(e){}
   }
 }
 async function pollLocalServer(){
@@ -2682,7 +2687,7 @@ async function saveCloudLogin(){
 async function cloudLoad(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return null;try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table+"?select=data&id=eq.main",{headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key)}});if(!r.ok)return null;const rows=await r.json();if(rows&&rows[0]&&rows[0].data)return rows[0].data;return null;}catch(e){return null;}}
 async function cloudSave(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return {ok:false,code:"未配置"};
   /* 安全阀：本地数据几乎是空的（没商品没订单没用户）时，禁止覆盖云端，避免空数据把真数据冲掉 */
-  try{ var _pn=(DB.products||[]).length,_on=(DB.orders||[]).length,_un=(DB.users||[]).length; if(_pn===0&&_on===0&&_un===0){ try{logAct("阻止空数据覆盖云端","");}catch(e){} return {ok:false,code:"本地为空，已阻止覆盖云端"}; } }catch(e){}try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table,{method:"POST",headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key),"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:"main",data:DB,updated_at:new Date().toISOString()})});const txt=await r.text().catch(()=>"");return {ok:r.ok,code:r.status,body:txt};}catch(e){return {ok:false,code:"网络",body:e.message};}}
+  try{ var _pn=(DB.products||[]).length,_on=(DB.orders||[]).length,_un=(DB.users||[]).length; if(_un===0||(_pn===0&&_on===0)){ try{logAct("阻止空数据覆盖云端","");}catch(e){} return {ok:false,code:"本地不是完整数据，已阻止覆盖云端"}; } }catch(e){}try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table,{method:"POST",headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key),"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:"main",data:DB,updated_at:new Date().toISOString()})});const txt=await r.text().catch(()=>"");return {ok:r.ok,code:r.status,body:txt};}catch(e){return {ok:false,code:"网络",body:e.message};}}
 
 function deepClone(o){try{return JSON.parse(JSON.stringify(o));}catch(e){return o;}}
 function load(){
@@ -5926,6 +5931,7 @@ async function boot(){
   try{ await autoSyncCfg(true); }catch(e){}
   try{const r=await fetch(apiUrl("/load"),{cache:"no-store"});if(r.ok){const d=await r.json();if(d&&d.orders){const remote=+d.savedAt||0,local=+DB.savedAt||0;if(dbIsEmpty()||remote>local){DB=d;save();}}}}catch(e){}
   if(cloudEnabled()){try{const cd=await cloudLoad();if(cd&&cd.orders){const remote=+cd.savedAt||0,local=+DB.savedAt||0;if(dbIsEmpty()||remote>local){DB=cd;save();}}}catch(e){}}
+  try{ const _ct=await cloudMeta(); if(_ct&&(+DB.savedAt||0)>_ct+3000){ await cloudSave(); } }catch(e){}
   DB.users=DB.users||[];
   const lastU=sessionStorage.getItem("honghuU");CUR=DB.users.find(x=>x.id===lastU)||null;
   if(!CUR){
