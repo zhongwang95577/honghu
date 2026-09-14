@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-14b</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-14c</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2624,6 +2624,7 @@ function load(){
     d.users=d.users||[];
     d.customers=d.customers||[];
     d.savedAt=d.savedAt||0;
+    d.trash=d.trash||[];
     try{
       d.customers=d.customers||[];
       (d.orders||[]).forEach(function(o){
@@ -3554,9 +3555,76 @@ function pickProdImgMore(inp){
     r.readAsDataURL(f);inp.value="";
   }catch(e){toast("失败："+e.message,"err");}
 }
+/* ================= 回收站（误删可找回） ================= */
+function trashPut(kind,data,label){
+  try{
+    DB.trash=DB.trash||[];
+    DB.trash.unshift({id:'t'+Date.now().toString(36)+Math.floor(Math.random()*1000),kind:kind,at:new Date().toISOString(),by:(CUR&&CUR.username)||'',label:label||'',data:data});
+    if(DB.trash.length>300)DB.trash.length=300;
+  }catch(e){}
+}
+function trashRestore(tid){
+  var e=(DB.trash||[]).find(function(x){return x.id===tid;});if(!e){toast('回收站里找不到这条记录','warn');return;}
+  try{
+    var k=e.kind,d=e.data;
+    if(k==='product'){ if(!DB.products.some(function(x){return x.id===d.id;}))DB.products.push(d); }
+    else if(k==='orders'){
+      (d||[]).forEach(function(o){
+        if(DB.orders.some(function(x){return x.id===o.id;}))return;
+        DB.orders.push(o);
+        var p=DB.products.find(function(x){return x.id===o.productId;});
+        if(p){ var q=oQty(o);
+          if(o.variantName&&p.variants&&p.variants.length){var vv=p.variants.find(function(v){return v.name===o.variantName;});if(vv)vv.stock=Math.max(0,(+vv.stock||0)-q);else p.stock=Math.max(0,(+p.stock||0)-q);}
+          else p.stock=Math.max(0,(+p.stock||0)-q);
+        }
+      });
+      try{normStocks();}catch(e2){}
+    }
+    else if(k==='purchase'){ DB.purchases.push(d); puAdjStock(d.productId,d.variantName,d.qty); }
+    else if(k==='expense'){ DB.expenses.push(d); }
+    else if(k==='debt'){ DB.debts.push(d); }
+    else if(k==='customer'){ DB.customers.push(d); }
+    else if(k==='rate'){ DB.rates.push(d); }
+    else if(k==='account'){ DB.accounts.push(d); }
+    else if(k==='user'){ DB.users.push(d); }
+    else { toast('这条记录不支持恢复','warn'); return; }
+    DB.trash=DB.trash.filter(function(x){return x.id!==tid;});
+    logAct('回收站恢复',k+' '+(e.label||''));
+    save();render();toast('已恢复：'+(e.label||k));
+  }catch(err){ toast('恢复失败：'+err.message,'err'); }
+}
+function trashPurge(tid){
+  if(!confirm('彻底删除后无法找回，确定吗？'))return;
+  DB.trash=(DB.trash||[]).filter(function(x){return x.id!==tid;});
+  save();renderTrash();toast('已彻底删除','warn');
+}
+function trashEmpty(){
+  if(!(DB.trash||[]).length){toast('回收站是空的','warn');return;}
+  if(!confirm('清空回收站？共 '+DB.trash.length+' 条，清空后无法找回。'))return;
+  DB.trash=[];save();renderTrash();toast('回收站已清空','warn');
+}
+function openTrash(){
+  openModal('<div class="modal-head"><h3>🗑️ 回收站</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body"><div id="trashBody"></div></div><div class="modal-foot"><button class="btn btn-ghost" style="color:var(--red)" onclick="trashEmpty()">清空回收站</button><button class="btn btn-ghost" onclick="closeModal()">关闭</button></div>');
+  renderTrash();
+}
+function renderTrash(){
+  var el=document.getElementById('trashBody');if(!el)return;
+  var KIND={product:'商品',orders:'订单',purchase:'进货',expense:'支出',debt:'借款',customer:'客户',rate:'扣点规则',account:'平台账号',user:'用户'};
+  var rows=(DB.trash||[]);
+  if(!rows.length){ el.innerHTML='<div class="empty"><div class="big">🗑️</div><p>回收站是空的</p></div>'; return; }
+  el.innerHTML='<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">删除的内容会先放到这里，点「恢复」即可原样找回（最多保留 300 条）。</div>'
+   +'<div class="table-wrap" style="padding:0"><table><thead><tr><th>删除时间</th><th>类型</th><th>内容</th><th>操作人</th><th>操作</th></tr></thead><tbody>'
+   +rows.map(function(e){
+      var lbl=esc(e.label||'');
+      if(e.kind==='orders'&&e.data&&e.data.length)lbl+='（'+e.data.length+' 行）';
+      return '<tr><td style="white-space:nowrap;font-size:12px;color:var(--muted)">'+esc(String(e.at||'').replace('T',' ').slice(0,19))+'</td><td>'+esc(KIND[e.kind]||e.kind)+'</td><td>'+lbl+'</td><td style="font-size:12px;color:var(--muted)">'+esc(e.by||'')+'</td><td><button class="btn btn-primary btn-sm" onclick="trashRestore(\''+e.id+'\')">↩️ 恢复</button> <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="trashPurge(\''+e.id+'\')">彻底删除</button></td></tr>';
+   }).join('')+'</tbody></table></div>';
+}
 function delProduct(id){
-  if(!confirm("确定删除该商品？其关联订单记录将保留，但会显示为未知商品。"))return;
-  DB.products=DB.products.filter(p=>p.id!==id);save();render();toast("商品已删除","warn");
+  var _p=DB.products.find(x=>x.id===id);if(!_p)return;
+  if(!confirm("确定删除该商品？引用它的订单会显示为未知商品。删除后可在「安全设置 → 回收站」找回。"))return;
+  trashPut("product",_p,_p.name||"");
+  DB.products=DB.products.filter(p=>p.id!==id);save();render();toast("商品已删除（可在回收站找回）","warn");
 }
 
 /* ================= RENDER: ORDERS ================= */
@@ -3701,15 +3769,23 @@ function renderOrderTbl(){
 function custDl(){return '<datalist id="custList">'+DB.customers.map(c=>'<option value="'+esc(c.name)+'">').join("")+'</datalist>';}
 function pickCustomer(){const n=$("#f_buyer")?$("#f_buyer").value.trim():"";const c=DB.customers.find(x=>x.name===n);if(c&&$("#f_contact")&&c.contact)$("#f_contact").value=c.contact;}
 function vCustomers(){
-  const rows=[...DB.customers].sort((a,b)=>a.name.localeCompare(b.name));
-  let html=`<div class="topbar"><div class="t-left"><h2>👥 客户档案</h2><p>共 ${rows.length} 位客户 · 下单时输入客户名可自动带出电话</p></div>
-    <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(customersCsv(),'客户档案.csv')">⬇️ 导出</button><button class="btn btn-primary" onclick="openCustomerForm()">➕ 新增客户</button></div></div>`;
-  html+=rows.length?`<div class="table-wrap"><table><thead><tr><th>客户</th><th>联系电话</th><th>地址</th><th>订单数</th><th>累计金额</th><th>备注</th><th>操作</th></tr></thead><tbody>`+
-    rows.map(cu=>{const os=DB.orders.filter(o=>o.buyer===cu.name);const amt=os.reduce((s,o)=>s+orderPaid(o),0);return `<tr><td style="font-weight:600">${esc(cu.name)}</td><td style="color:var(--accent-2)">${esc(cu.contact||"—")}</td><td style="color:var(--muted)">${esc(cu.addr||"—")}</td><td>${os.length}</td><td style="color:var(--green);font-weight:700">${yuan(amt)}</td><td style="color:var(--muted)">${esc(cu.note||"—")}</td><td><div class="table-actions"><div class="icon-btn edit" onclick="openCustomerForm('${cu.id}')">✏️</div><div class="icon-btn" style="color:var(--red)" onclick="delCustomer('${cu.id}')">🗑️</div></div></td></tr>`;}).join("")+`</tbody></table></div>`
-    :`<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">👥</div><p>还没有客户，开单时会自动登记，也可点右上角新增</p></div></div>`;
+  const html=`<div class="topbar"><div class="t-left"><h2>👥 客户档案</h2><p>共 ${DB.customers.length} 位客户 · 下单时输入客户名可自动带出电话</p></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="cf_q" placeholder="🔍 搜索客户 / 电话 / 地址" oninput="cfQ=this.value;renderCustTbl()" value="${esc(cfQ)}" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;outline:none;min-width:180px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(customersCsv(),'客户档案.csv')">⬇️ 导出</button><button class="btn btn-primary" onclick="openCustomerForm()">➕ 新增客户</button></div></div>
+  <div id="custTbl"></div>`;
+  setTimeout(renderCustTbl,0);
   return html;
 }
-function openCustomerForm(id){
+let cfQ="";
+function custHay(cu){return [cu.name,cu.contact,cu.addr,cu.note].filter(Boolean).join(" ");}
+function renderCustTbl(){
+  const el=document.getElementById("custTbl");if(!el)return;
+  const q=(cfQ||"").trim();
+  let rows=[...DB.customers].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
+  if(q)rows=rows.filter(cu=>kwHit(custHay(cu),q));
+  if(!rows.length){el.innerHTML=`<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">👥</div><p>${q?"没有匹配的客户":"还没有客户，开单时会自动登记，也可点右上角新增"}</p></div></div>`;return;}
+  el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>客户</th><th>联系电话</th><th>地址</th><th>订单数</th><th>累计金额</th><th>备注</th><th>操作</th></tr></thead><tbody>`+
+    rows.map(cu=>{const os=DB.orders.filter(o=>o.buyer===cu.name);const amt=os.reduce((s,o)=>s+orderPaid(o),0);return `<tr><td style="font-weight:600">${esc(cu.name)}</td><td style="color:var(--accent-2)">${esc(cu.contact||"—")}</td><td style="color:var(--muted)">${esc(cu.addr||"—")}</td><td>${os.length}</td><td style="color:var(--green);font-weight:700">${yuan(amt)}</td><td style="color:var(--muted)">${esc(cu.note||"—")}</td><td><div class="table-actions"><div class="icon-btn edit" onclick="openCustomerForm('${cu.id}')">✏️</div><div class="icon-btn" style="color:var(--red)" onclick="delCustomer('${cu.id}')">🗑️</div></div></td></tr>`;}).join("")+`</tbody></table></div>`;
+}function openCustomerForm(id){
   const c=id?DB.customers.find(x=>x.id===id):{name:"",contact:"",addr:"",note:""};
   openModal(`<div class="modal-head"><h3>${id?"✏️ 编辑客户":"➕ 新增客户"}</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">
     <div class="field"><label class="req">客户名称</label><input id="c_name" value="${esc(c.name)}"></div>
@@ -3718,7 +3794,7 @@ function openCustomerForm(id){
     </div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveCustomer('${id||""}')">保存</button></div>`);
 }
 function saveCustomer(id){const name=$("#c_name").value.trim();if(!name){toast("请填写客户名称","err");return;}const obj={name,contact:$("#c_contact").value.trim(),addr:$("#c_addr").value.trim(),note:$("#c_note").value.trim()};if(id){Object.assign(DB.customers.find(x=>x.id===id),obj);toast("客户已更新");}else{DB.customers.push({id:pid(),...obj});toast("客户已添加");}save();closeModal();render();}
-function delCustomer(id){if(!confirm("确定删除该客户？"))return;DB.customers=DB.customers.filter(x=>x.id!==id);save();render();toast("客户已删除","warn");}
+function delCustomer(id){var _c=DB.customers.find(x=>x.id===id);if(!_c)return;if(!confirm("确定删除该客户？可在「回收站」找回。"))return;trashPut("customer",_c,_c.name||"");DB.customers=DB.customers.filter(x=>x.id!==id);save();render();toast("客户已删除（可在回收站找回）","warn");}
 function customersCsv(){return DB.customers.map(c=>({客户:c.name,联系电话:c.contact||"",地址:c.addr||"",备注:c.note||""}));}
 function openOrderForm(id){
   try{
@@ -4145,7 +4221,7 @@ function saveOrderNew(printAfter){
       DB.orders=DB.orders.filter(function(x){return _oids.indexOf(x.id)<0;});
       window._editGroup=null;
     }
-    var n=0,made=[],firstId=null;var gid="g"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);if(items.length<2)gid="";
+    var n=0,made=[],firstId=null;var _oldGid=(window._editGroup&&window._editGroup[0]&&window._editGroup[0].gid)||"";var gid=_oldGid||("g"+Date.now().toString(36)+Math.random().toString(36).slice(2,6));if(items.length<2)gid="";
     items.forEach(function(it){
       var p=_tp?null:DB.products.find(function(x){return x.id===it.pid;});if(!_tp&&!p)return;
       var _old=_carry[String(it.pid||it.name||"")]||null;
@@ -4165,8 +4241,8 @@ function saveOrderNew(printAfter){
       obj.packFactor=(_tp?1:oiFactor(it));
       try{ if(_old&&_old.att&&_old.att.length)obj.att=_old.att; }catch(e){}   /* 编辑多行单时保留原附件 */
       if(!_tp)stockAdj(p,obj.variantName,-(effQty(obj)*(obj.packFactor||1)));
-      obj.seq=DB.orders.filter(function(x){return x.date===obj.date;}).length+1;
-      var _nid=pid();if(!firstId)firstId=_nid;DB.orders.push(Object.assign({id:_nid},obj));
+      obj.seq=(_old&&_old.seq)?_old.seq:(DB.orders.filter(function(x){return x.date===obj.date;}).length+1);
+      var _nid=(_old&&_old.id)?_old.id:pid();if(!firstId)firstId=_nid;DB.orders.push(Object.assign({id:_nid},obj));
       if(_tp&&obj.productName){
         try{
           var _nm=obj.productName.trim();
@@ -4376,9 +4452,11 @@ function updateOrdBulk(){try{var el=document.getElementById("ordBulk");if(!el)re
 function bulkDelete(){
   var ids=[].concat.apply([],Array.from(selOrders).map(function(id){return (orderGroup(id)||[]).map(function(x){return x.id;});}));
   ids=[...new Set(ids)];if(!ids.length)return;
-  if(!confirm("确定删除选中的订单（共 "+ids.length+" 行，库存全部回补）？"))return;
-  ids.forEach(function(id){var x=DB.orders.find(function(y){return y.id===id;});if(!x)return;var p=DB.products.find(function(y){return y.id===x.productId;});if(p)p.stock=Math.max(0,p.stock+oQty(x));});
-  DB.orders=DB.orders.filter(function(x){return ids.indexOf(x.id)<0;});selOrders.clear();logAct("批量删除订单",ids.length+" 行");save();render();toast("已删除 "+ids.length+" 行，库存已回补","warn");
+  var _picked=[];ids.forEach(function(id){var x=DB.orders.find(function(y){return y.id===id;});if(x)_picked.push(x);});
+  if(!confirm("确定删除选中的订单（共 "+ids.length+" 行，库存全部回补）？可在回收站找回。"))return;
+  _picked.forEach(function(x){var p=DB.products.find(function(y){return y.id===x.productId;});if(p)p.stock=Math.max(0,p.stock+oQty(x));});
+  trashPut("orders",_picked,("批量删除 "+_picked.length+" 行"));
+  DB.orders=DB.orders.filter(function(x){return ids.indexOf(x.id)<0;});selOrders.clear();logAct("批量删除订单",ids.length+" 行");save();render();toast("已删除 "+ids.length+" 行，库存已回补（可在回收站找回）","warn");
 }
 function bulkReturn(){
   var ids=[...selOrders];if(!ids.length)return;
@@ -4394,13 +4472,14 @@ function bulkSaveInvoice(){
 function toggleSelGroup(id,on){var l=orderGroup(id)||[];l.forEach(function(x){if(on)selOrders.add(x.id);else selOrders.delete(x.id);});updateOrdBulk();}
 function delGroup(id){
   var l=orderGroup(id)||[];if(!l.length)return;
-  if(l.length>1&&!confirm("这一单有 "+l.length+" 件商品，确定整单删除？（库存会全部回补）"))return;
-  if(l.length===1&&!confirm("确定删除该订单？（已扣库存自动回补）"))return;
+  if(l.length>1&&!confirm("这一单有 "+l.length+" 件商品，确定整单删除？（库存会全部回补，可在回收站找回）"))return;
+  if(l.length===1&&!confirm("确定删除该订单？（已扣库存自动回补，可在回收站找回）"))return;
   l.forEach(function(x){var prod=DB.products.find(function(p){return p.id===x.productId;});if(prod)prod.stock=Math.max(0,prod.stock+oQty(x));});
   var ids=l.map(function(x){return x.id;});
+  trashPut("orders",l.map(function(x){return x;}),orderName(l[0])+(l.length>1?(" 等"+l.length+"件"):""));
   DB.orders=DB.orders.filter(function(x){return ids.indexOf(x.id)<0;});
   logAct("删除订单",orderName(l[0])+(l.length>1?(" 等"+l.length+"件"):""));
-  save();render();toast("已删除"+(l.length>1?("整单 "+l.length+" 件"):"订单")+"，库存已回补","warn");
+  save();render();toast("已删除"+(l.length>1?("整单 "+l.length+" 件"):"订单")+"，库存已回补（可在回收站找回）","warn");
 }
 function printGroupOf(id){
   try{var l=orderGroup(id)||[];if(!l.length)return;var ids=l.map(function(x){return x.id;});
@@ -4440,23 +4519,33 @@ function returnAllGroup(id){
 function canDebt(){return !!(CUR&&(CUR.role==="boss"||CUR.debt));}
 function vDebts(){
   if(!canDebt())return '<div class="topbar"><div class="t-left"><h2>💰 借还款</h2></div></div><div class="card" style="margin:20px 26px"><div class="empty"><div class="big">🔒</div><p>只有老板（或老板授权的人）可以查看</p></div></div>';
+  var html='<div class="topbar"><div class="t-left"><h2>💰 借还款登记</h2><p id="debt_sum"></p></div>'
+   +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="df_q" placeholder="🔍 搜索借款人 / 电话 / 备注" oninput="dfQ=this.value;renderDebtTbl()" value="'+esc(dfQ)+'" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;outline:none;min-width:180px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(debtsCsv(),\'借还款.csv\')">⬇️ 导出</button><button class="btn btn-primary" onclick="openDebtForm()">➕ 新增借款</button></div></div>'
+   +'<div id="debtTbl"></div>';
+  setTimeout(renderDebtTbl,0);
+  return html;
+}
+let dfQ="";
+function debtHay(d){return [d.name,d.contact,d.note,(d.payments||[]).map(function(p){return p.note;}).join(" "),d.date,d.dueDate].filter(Boolean).join(" ");}
+function renderDebtTbl(){
+  var el=document.getElementById("debtTbl");if(!el)return;
+  var q=(dfQ||"").trim();
   var rows=(DB.debts||[]).slice().sort(function(a,b){return String(b.date||"").localeCompare(String(a.date||""));});
   var tot=0,paid=0;rows.forEach(function(d){tot+=(+d.amount||0);paid+=(+d.paid||0);});
-  var html='<div class="topbar"><div class="t-left"><h2>💰 借还款登记</h2><p>借出 <b>'+yuan(tot)+'</b> · 已还 <b style="color:var(--green)">'+yuan(paid)+'</b> · 未还 <b style="color:var(--red)">'+yuan(tot-paid)+'</b>（'+rows.length+' 笔）</p></div>'
-   +'<div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(debtsCsv(),\'借还款.csv\')">⬇️ 导出</button><button class="btn btn-primary" onclick="openDebtForm()">➕ 新增借款</button></div></div>'
-   +'<div class="table-wrap"><table><thead><tr><th>借款人</th><th>借款金额</th><th>已还</th><th>未还</th><th>借款日</th><th>约定还款日</th><th>状态</th><th>操作</th></tr></thead><tbody>';
-  html+=rows.length?rows.map(function(d){var rem=(+d.amount||0)-(+d.paid||0);return '<tr>'
+  var sum=document.getElementById("debt_sum");
+  if(sum)sum.innerHTML='借出 <b>'+yuan(tot)+'</b> · 已还 <b style="color:var(--green)">'+yuan(paid)+'</b> · 未还 <b style="color:var(--red)">'+yuan(tot-paid)+'</b>（'+rows.length+' 笔）';
+  if(q)rows=rows.filter(function(d){return kwHit(debtHay(d),q);});
+  if(!rows.length){el.innerHTML='<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">💰</div><p>'+(q?"没有匹配的记录":"还没有记录，点右上角「新增借款」")+'</p></div></div>';return;}
+  el.innerHTML='<div class="table-wrap"><table><thead><tr><th>借款人</th><th>借款金额</th><th>已还</th><th>未还</th><th>借款日</th><th>约定还款日</th><th>状态</th><th>操作</th></tr></thead><tbody>'
+   +rows.map(function(d){var rem=(+d.amount||0)-(+d.paid||0);return '<tr>'
     +'<td style="font-weight:600;color:var(--accent-2);cursor:pointer" onclick="debtDetail(\''+esc(d.name||"")+'\')">'+esc(d.name||"")+(d.contact?('<div style="font-size:11px;color:var(--muted)">'+esc(d.contact)+'</div>'):'')+(d.note?('<div style="font-size:11px;color:var(--muted)">'+esc(d.note)+'</div>'):'')+'</td>'
     +'<td>'+yuan(d.amount)+'</td><td style="color:var(--green);font-weight:600">'+yuan(d.paid||0)+'</td>'
     +'<td style="color:'+(rem<=0?'var(--muted)':'var(--red)')+';font-weight:700">'+yuan(rem)+'</td>'
     +'<td style="color:var(--muted)">'+esc(d.date||"")+'</td><td style="color:var(--muted)">'+esc(d.dueDate||"—")+'</td>'
     +'<td>'+(rem<=0?'<span class="badge green">已还清</span>':((d.paid||0)>0?'<span class="badge" style="background:#fde68a;color:#92400e">部分还</span>':'<span class="badge red">未还</span>'))+'</td>'
-    +'<td><div class="table-actions"><button class="btn btn-primary btn-sm" onclick="payDebt(\''+d.id+'\')">💰 还款</button><button class="btn btn-ghost btn-sm" data-n="'+esc(d.name||"")+'" onclick="showDebt(this)">📋 详情</button><button class="btn btn-ghost btn-sm" data-id="'+d.id+'" onclick="debtAttachById(this)">📎 凭证</button><button class="btn btn-ghost btn-sm" onclick="openDebtForm(\''+d.id+'\')">✏️ 编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delDebt(\''+d.id+'\')">🗑️ 删除</button></div></td></tr>';}).join("")
-    :'<tr><td colspan="8" style="text-align:center;color:var(--muted)">还没有记录，点右上角「新增借款」</td></tr>';
-  html+='</tbody></table></div>';
-  return html;
-}
-function showDebt(el){try{debtDetail(el.getAttribute("data-n"));}catch(e){}}
+    +'<td><div class="table-actions"><button class="btn btn-primary btn-sm" onclick="payDebt(\''+d.id+'\')">💰 还款</button><button class="btn btn-ghost btn-sm" data-n="'+esc(d.name||"")+'" onclick="showDebt(this)">📄 详情</button><button class="btn btn-ghost btn-sm" data-id="'+d.id+'" onclick="debtAttachById(this)">📎 凭证</button><button class="btn btn-ghost btn-sm" onclick="openDebtForm(\''+d.id+'\')">✏️ 编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delDebt(\''+d.id+'\')">🗑️ 删除</button></div></td></tr>';}).join("")
+   +'</tbody></table></div>';
+}function showDebt(el){try{debtDetail(el.getAttribute("data-n"));}catch(e){}}
 function debtAttachById(el){try{debtAttach(el.getAttribute("data-id"));}catch(e){}}
 function debtAttach(id){
   var d=(DB.debts||[]).find(function(x){return x.id===id;});if(!d)return;
@@ -4547,8 +4636,9 @@ function doDebtPay(id){
 }
 function delDebt(id){
   var d=(DB.debts||[]).find(function(x){return x.id===id;});if(!d)return;
-  if(!confirm("确定删除「"+(d.name||"")+"」这条借款记录？"))return;
-  DB.debts=DB.debts.filter(function(x){return x.id!==id;});logAct("删除借还款",d.name);save();render();toast("已删除","warn");
+  if(!confirm("确定删除「"+(d.name||"")+"」这条借款记录？可在「回收站」找回。"))return;
+  trashPut("debt",d,d.name||"");
+  DB.debts=DB.debts.filter(function(x){return x.id!==id;});logAct("删除借还款",d.name);save();render();toast("已删除（可在回收站找回）","warn");
 }
 
 function logAct(a,d){try{DB.logs=DB.logs||[];DB.logs.push({t:new Date().toISOString(),u:(CUR&&CUR.username)||"",a:a,d:d||""});if(DB.logs.length>2000)DB.logs=DB.logs.slice(-2000);}catch(e){}}
@@ -4941,25 +5031,35 @@ function vExpense(){
   const p=eF.p,a=eF.a;
   const total=DB.expenses.filter(e=>canSee(e.accountId)&&withinDate(e)).reduce((s,e)=>s+e.amount,0);
   const accOpts=DB.accounts.filter(x=>canSee(x.id)&&(p==="all"||x.platformId===p));
-  const rows=DB.expenses.filter(e=>canSee(e.accountId)&&withinDate(e)&&(p==="all"||e.platformId===p)&&(a==="all"||e.accountId===a)).sort((x,y)=>y.date.localeCompare(x.date));
-  const st=rows.reduce((s,e)=>s+e.amount,0);
-  let html=`<div class="topbar"><div class="t-left"><h2>💸 费用支出</h2><p>范围：${FILTER.label} · 合计 <b style="color:var(--amber)">${yuan(total)}</b></p></div>
+  const html=`<div class="topbar"><div class="t-left"><h2>💸 费用支出</h2><p>范围：${FILTER.label} · 合计 <b style="color:var(--amber)">${yuan(total)}</b></p></div>
     <button class="btn btn-ghost btn-sm" onclick="exportCsv(expenseCsv(),'费用.csv')">⬇️ 导出</button><button class="btn btn-primary" onclick="openExpenseForm()">➕ 记一笔支出</button></div>
   <div class="filterbar">
     ${rangeUI()}
     <select id="ex_p" onchange="eF.p=this.value;eF.a='all';render()"><option value="all">全部平台</option>${myPlatforms().map(pp=>`<option value="${pp.id}" ${p===pp.id?"selected":""}>${pp.em} ${pp.name}</option>`).join("")}</select>
     <select id="ex_a" onchange="eF.a=this.value;render()"><option value="all">全部账号</option>${accOpts.map(x=>`<option value="${x.id}" ${a===x.id?"selected":""}>${esc(x.name)}</option>`).join("")}</select>
-  </div>`;
-  html+=rows.length?`<div class="table-wrap"><table><thead><tr><th>平台</th><th>账号</th><th>分类</th><th>金额</th><th>备注</th><th>日期</th><th>操作</th></tr></thead>
+    <input id="ef_q" placeholder="🔍 搜索分类 / 备注 / 账号" oninput="efQ=this.value;renderExpenseTbl()" value="${esc(efQ)}" style="flex:1;min-width:180px;padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;outline:none">
+  </div>
+  <div id="expTbl"></div>`;
+  setTimeout(renderExpenseTbl,0);
+  return html;
+}
+let efQ="";
+function expenseHay(e){return [e.cat,e.note,aname(e.accountId),e.date,String(e.amount)].filter(Boolean).join(" ");}
+function renderExpenseTbl(){
+  const el=document.getElementById("expTbl");if(!el)return;
+  const p=eF.p,a=eF.a,q=(efQ||"").trim();
+  let rows=DB.expenses.filter(e=>canSee(e.accountId)&&withinDate(e)&&(p==="all"||e.platformId===p)&&(a==="all"||e.accountId===a)).sort((x,y)=>String(y.date||"").localeCompare(String(x.date||"")));
+  if(q)rows=rows.filter(e=>kwHit(expenseHay(e),q));
+  const st=rows.reduce((s,e)=>s+e.amount,0);
+  if(!rows.length){el.innerHTML=`<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">💸</div><p>${q?"没有匹配的支出":"暂无支出记录"}</p></div></div>`;return;}
+  el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>平台</th><th>账号</th><th>分类</th><th>金额</th><th>备注</th><th>日期</th><th>操作</th></tr></thead>
       <tbody>${rows.map(e=>`<tr><td>${pchip(e.platformId)}</td><td style="font-size:12.5px;color:var(--muted)">${esc(aname(e.accountId))}</td>
         <td><span class="badge amber">${esc(e.cat)}</span></td><td style="color:var(--red);font-weight:700">−${yuan(e.amount)}</td>
         <td style="color:var(--muted)">${esc(e.note||"—")}</td><td style="color:var(--muted)">${esc(e.date)}</td>
         <td><div class="table-actions"><div class="icon-btn edit" title="编辑" onclick="openExpenseForm('${e.id}')">✏️</div>
         <div class="icon-btn" title="删除" style="color:var(--red)" onclick="delExpense('${e.id}')">🗑️</div></div></td></tr>`).join("")}</tbody></table>
-      <div style="padding:12px 4px;font-size:13px;color:var(--muted)">小计：<b style="color:var(--red)">${yuan(st)}</b></div></div>`:`<div class="card" style="margin:20px 26px"><div class="empty"><div class="big">💸</div><p>暂无支出记录</p></div></div>`;
-  return html;
-}
-function openExpenseForm(id){
+      <div style="padding:12px 4px;font-size:13px;color:var(--muted)">小计：<b style="color:var(--red)">${yuan(st)}</b></div></div>`;
+}function openExpenseForm(id){
   const cats=["运费","广告费","平台佣金","人工","场地","材料","其他"];
   const catOpts=c=>cats.map(x=>`<option ${c===x?"selected":""}>${x}</option>`).join("");
   if(id){const e=DB.expenses.find(x=>x.id===id);
@@ -4996,8 +5096,10 @@ function saveExpense(id){
   save();closeModal();render();
 }
 function delExpense(id){
-  if(!confirm("确定删除该条支出？"))return;
-  DB.expenses=DB.expenses.filter(x=>x.id!==id);save();render();toast("支出已删除","warn");
+  var _e=DB.expenses.find(x=>x.id===id);if(!_e)return;
+  if(!confirm("确定删除该条支出？可在「回收站」找回。"))return;
+  trashPut("expense",_e,(_e.cat||"")+" "+yuan(_e.amount));
+  DB.expenses=DB.expenses.filter(x=>x.id!==id);save();render();toast("支出已删除（可在回收站找回）","warn");
 }
 
 /* ================= RENDER: PLATFORM & ACCOUNT ================= */
@@ -5060,8 +5162,10 @@ function saveAccount(id){
   save();closeModal();render();
 }
 function delAccount(id){
-  if(!confirm("确定删除该账号？其关联订单/支出记录将显示为未知账号。"))return;
-  DB.accounts=DB.accounts.filter(x=>x.id!==id);save();render();toast("账号已删除","warn");
+  var _a=DB.accounts.find(x=>x.id===id);if(!_a)return;
+  if(!confirm("确定删除该账号？其关联订单/支出会显示为未知账号。可在「回收站」找回。"))return;
+  trashPut("account",_a,_a.name||"");
+  DB.accounts=DB.accounts.filter(x=>x.id!==id);save();render();toast("账号已删除（可在回收站找回）","warn");
 }
 
 /* ================= EXPORT ================= */
@@ -5134,7 +5238,7 @@ function saveRate(id){
   else{DB.rates.push({id:pid(),...obj});toast("规则已添加");}
   save();closeModal();render();
 }
-function delRate(id){if(!confirm("确定删除该扣点规则？"))return;DB.rates=DB.rates.filter(x=>x.id!==id);save();render();toast("规则已删除","warn");}
+function delRate(id){var _r=DB.rates.find(x=>x.id===id);if(!_r)return;if(!confirm("确定删除该扣点规则？可在「回收站」找回。"))return;trashPut("rate",_r,(_r.tag||_r.category||_r.platformId||""));DB.rates=DB.rates.filter(x=>x.id!==id);save();render();toast("规则已删除（可在回收站找回）","warn");}
 
 /* ================= PROFIT (利润分析) & PURCHASE (采购入库) ================= */
 function vProfit(){
@@ -5165,14 +5269,22 @@ function vProfit(){
 function profitRowsCsv(){const m={};DB.orders.forEach(o=>{if(!withinDate(o))return;const p=DB.products.find(x=>x.id===o.productId);const b=m[o.productId]=m[o.productId]||{name:p?p.name:"未知",cat:p?p.category:"—",vol:0,sale:0,refund:0,cost:0};b.vol+=effQty(o);b.sale+=orderGross(o);b.refund+=orderRefund(o);b.cost+=orderCost(o);});return Object.values(m).map(r=>{const profit=r.sale-r.refund-r.cost;return {商品:r.name,分类:r.cat,销量:r.vol,销售额:+r.sale.toFixed(2),退款:+r.refund.toFixed(2),成本:+r.cost.toFixed(2),利润:+profit.toFixed(2),利润率:(r.sale?profit/r.sale*100:0).toFixed(1)+"%"};});}
 
 function vPurchase(){
-  const total=DB.purchases.reduce((s,x)=>s+x.qty*x.unitCost,0);
-  const rows=[...DB.purchases].sort((a,b)=>b.date.localeCompare(a.date));
-  return `<div class="topbar"><div class="t-left"><h2>📥 采购入库</h2><p>记录进货：+库存、更新商品成本 · 累计进货 <b style="color:var(--amber)">${yuan(total)}</b>（${DB.purchases.length} 笔）</p></div>
-    <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(purchaseCsv(),'采购入库.csv')">⬇️ 导出</button><button class="btn btn-primary" onclick="openPurchaseForm()">➕ 进货入库</button></div></div>
-  <div class="table-wrap"><table><thead><tr><th>日期</th><th>商品</th><th>数量</th><th>采购单价</th><th>金额</th><th>供应商</th><th>备注</th><th>操作</th></tr></thead>
-  <tbody>${rows.length?rows.map(x=>{const p=DB.products.find(y=>y.id===x.productId);return `<tr><td style="white-space:nowrap">${esc(x.date)}</td><td style="font-weight:600">${esc(orderName(o))}</td><td>${x.qty}</td><td>${yuan(x.unitCost)}</td><td style="color:var(--green);font-weight:700">${yuan(x.qty*x.unitCost)}</td><td style="color:var(--muted)">${esc(x.supplier||"—")}</td><td style="color:var(--muted)">${esc(x.note||"—")}</td><td><div class="table-actions"><div class="icon-btn edit" onclick="openPurchaseForm('${x.id}')">✏️</div><div class="icon-btn" style="color:var(--red)" onclick="delPurchase('${x.id}')">🗑️</div></div></td></tr>`;}).join(""):`<tr><td colspan="8" style="text-align:center;color:var(--muted)">还没有进货记录</td></tr>`}</tbody></table></div>`;
+  const html=`<div class="topbar"><div class="t-left"><h2>📥 采购入库</h2><p>记录进货：+库存、更新商品成本 · 累计进货 <b style="color:var(--amber)">${yuan(DB.purchases.reduce((s,x)=>s+x.qty*x.unitCost,0))}</b>（${DB.purchases.length} 笔）</p></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="pf_q" placeholder="🔍 搜索商品 / 规格 / 供应商 / 备注" oninput="pfQ=this.value;renderPurchaseTbl()" value="${esc(pfQ)}" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;outline:none;min-width:200px"><button class="btn btn-ghost btn-sm" onclick="exportCsv(purchaseCsv(),'采购入库.csv')">⬇️ 导出</button><button class="btn btn-primary" onclick="openPurchaseForm()">➕ 进货入库</button></div></div>
+  <div id="purTbl"></div>`;
+  setTimeout(renderPurchaseTbl,0);
+  return html;
 }
-function openPurchaseForm(id){
+let pfQ="";
+function purchaseHay(x){var p=DB.products.find(y=>y.id===x.productId);return [p?p.name:"",p?p.sku:"",p?p.barcode:"",x.variantName,x.supplier,x.note,x.date].filter(Boolean).join(" ");}
+function renderPurchaseTbl(){
+  const el=document.getElementById("purTbl");if(!el)return;
+  const q=(pfQ||"").trim();
+  let rows=[...DB.purchases].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+  if(q)rows=rows.filter(x=>kwHit(purchaseHay(x),q));
+  el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>日期</th><th>商品</th><th>数量</th><th>采购单价</th><th>金额</th><th>供应商</th><th>备注</th><th>操作</th></tr></thead>
+  <tbody>${rows.length?rows.map(x=>{const p=DB.products.find(y=>y.id===x.productId);return `<tr><td style="white-space:nowrap">${esc(x.date)}</td><td style="font-weight:600">${esc(p?p.name:"未知商品")}${x.variantName?`<div style="font-size:11.5px;color:var(--muted)">${esc(x.variantName)}</div>`:""}</td><td>${x.qty}</td><td>${yuan(x.unitCost)}</td><td style="color:var(--green);font-weight:700">${yuan(x.qty*x.unitCost)}</td><td style="color:var(--muted)">${esc(x.supplier||"—")}</td><td style="color:var(--muted)">${esc(x.note||"—")}</td><td><div class="table-actions"><div class="icon-btn edit" onclick="openPurchaseForm('${x.id}')">✏️</div><div class="icon-btn" style="color:var(--red)" onclick="delPurchase('${x.id}')">🗑️</div></div></td></tr>`;}).join(""):`<tr><td colspan="8" style="text-align:center;color:var(--muted)">${q?"没有匹配的进货记录":"还没有进货记录"}</td></tr>`}</tbody></table></div>`;
+}function openPurchaseForm(id){
   const opts=x=>DB.products.map(p=>`<option value="${p.id}" ${x===p.id?"selected":""}>${esc(p.name)}（在库${p.stock}）</option>`).join("");
   if(id){const x=DB.purchases.find(y=>y.id===id);
     openModal(`<div class="modal-head"><h3>📥 编辑进货</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">
@@ -5243,9 +5355,11 @@ function puAdjStock(prodId,vname,delta){
   }catch(e){}
 }
 function delPurchase(id){
-  if(!confirm("确定删除该进货记录？对应库存将扣回。"))return;
-  const x=DB.purchases.find(y=>y.id===id);if(x){puAdjStock(x.productId,x.variantName,-x.qty);}
-  DB.purchases=DB.purchases.filter(y=>y.id!==id);save();render();toast("进货已删除，库存已扣回","warn");
+  const x=DB.purchases.find(y=>y.id===id);if(!x)return;
+  if(!confirm("确定删除该进货记录？对应库存将扣回，可在「回收站」找回。"))return;
+  puAdjStock(x.productId,x.variantName,-x.qty);
+  trashPut("purchase",x,(pname(x.productId)||"")+(x.variantName?(" / "+x.variantName):""));
+  DB.purchases=DB.purchases.filter(y=>y.id!==id);save();render();toast("进货已删除，库存已扣回（可在回收站找回）","warn");
 }
 function purchaseCsv(){return DB.purchases.map(x=>{const p=DB.products.find(y=>y.id===x.productId);return {日期:x.date,商品:p?p.name:"未知",数量:x.qty,采购单价:+x.unitCost,金额:+(x.qty*x.unitCost).toFixed(2),供应商:x.supplier||"",备注:x.note||""};});}
 
@@ -5284,16 +5398,19 @@ var cuSel={};
 function toggleCuSel(id,on){if(on)cuSel[id]=1;else delete cuSel[id];}
 function cuSelAll(on){document.querySelectorAll("#creditBody .cuChk").forEach(function(c){c.checked=on;if(on)cuSel[c.value]=1;else delete cuSel[c.value];});}
 function delCreditOrder(id){
-  if(!confirm("确定删除这条挂账记录？（对应订单会被删除，已扣库存自动回补）"))return;
-  const o=DB.orders.find(x=>x.id===id);
-  if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+oQty(o));}
-  const _od=DB.orders.find(x=>x.id===id);logAct("删除挂账","客户 "+((_od&&_od.creditCustomer)||"")+" 应收 "+((_od&&orderPaid(_od))||0));DB.orders=DB.orders.filter(x=>x.id!==id);save();delete cuSel[id];toast("已删除该挂账记录，库存已回补","warn");renderCreditTbl();
+  const o=DB.orders.find(x=>x.id===id);if(!o)return;
+  if(!confirm("确定删除这条挂账记录？（对应订单会被删除，已扣库存自动回补，可在回收站找回）"))return;
+  const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+oQty(o));
+  trashPut("orders",[o],"挂账 "+((o.creditCustomer)||"")+" 应收 "+orderPaid(o));
+  logAct("删除挂账","客户 "+((o.creditCustomer)||"")+" 应收 "+orderPaid(o));DB.orders=DB.orders.filter(x=>x.id!==id);save();delete cuSel[id];toast("已删除该挂账记录，库存已回补（可在回收站找回）","warn");renderCreditTbl();
 }
 function delCreditSel(){
   const ids=Object.keys(cuSel);if(!ids.length){toast("请先勾选要删除的记录","err");return;}
-  if(!confirm("确定删除选中的 "+ids.length+" 条挂账记录？（对应订单会删除，库存回补）"))return;
-  ids.forEach(function(id){const o=DB.orders.find(x=>x.id===id);if(o){const prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+oQty(o));}});
-  logAct("批量删除挂账",ids.length+" 条");DB.orders=DB.orders.filter(x=>ids.indexOf(x.id)<0);cuSel={};save();toast("已删除 "+ids.length+" 条，库存已回补","warn");renderCreditTbl();
+  var _cp=[];ids.forEach(function(id){var o=DB.orders.find(x=>x.id===id);if(o)_cp.push(o);});
+  if(!confirm("确定删除选中的 "+ids.length+" 条挂账记录？（对应订单会删除，库存回补，可在回收站找回）"))return;
+  _cp.forEach(function(o){var prod=DB.products.find(p=>p.id===o.productId);if(prod)prod.stock=Math.max(0,prod.stock+oQty(o));});
+  trashPut("orders",_cp,"批量删除挂账 "+_cp.length+" 条");
+  logAct("批量删除挂账",ids.length+" 条");DB.orders=DB.orders.filter(x=>ids.indexOf(x.id)<0);cuSel={};save();toast("已删除 "+ids.length+" 条，库存已回补（可在回收站找回）","warn");renderCreditTbl();
 }
 function rebuildCuA(){var s=document.getElementById("cu_a");if(!s)return;s.innerHTML='<option value="all">全部账号</option>'+DB.accounts.filter(a=>canSee(a.id)&&(cF.p==="all"||a.platformId===cF.p)).map(a=>'<option value="'+a.id+'" '+(cF.a===a.id?'selected':'')+'>'+esc(a.name)+'</option>').join('');}
 function vCredit(){
@@ -5330,7 +5447,7 @@ function renderCreditTbl(){
   h+=`</tbody></table></div>
   <h3 class="sec"><span class="dot"></span>挂账明细 <button class="btn btn-ghost btn-sm" style="margin-left:10px" onclick="var w=document.getElementById('cuDetailWrap');if(w)w.style.display=(w.style.display==='none'?'':'none');">展开 / 收起</button><button class="btn btn-ghost btn-sm" style="margin-left:6px;color:var(--red)" onclick="delCreditSel()">🗑️ 删除选中</button></h3>
   <div id="cuDetailWrap" style="display:none"><div class="table-wrap"><table><thead><tr><th style="width:30px"><input type="checkbox" onchange="cuSelAll(this.checked)"></th><th>销售日期</th><th>客户</th><th>销售</th><th>商品</th><th>应收</th><th>已收</th><th>未收</th><th>状态</th><th>操作</th></tr></thead><tbody>`;
-  h+=creditOrders.filter(o=>!q||(o.creditCustomer||"").toLowerCase().includes(q)||orderName(o).toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date)).map(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);return `<tr><td><input class="cuChk" type="checkbox" value="${o.id}" ${cuSel[o.id]?"checked":""} onchange="toggleCuSel('${o.id}',this.checked)"></td><td>${esc(o.date)}</td><td style="font-weight:600">${esc(o.creditCustomer)}</td><td style="color:var(--muted)">${esc(o.seller||"—")}</td><td>${esc(orderName(o))}</td><td style="color:var(--amber)">${yuan(orderPaid(o))}</td><td style="color:var(--green)">${yuan(o.creditPaid||0)}</td><td style="color:${rem<=0?"var(--muted)":"var(--red)"};font-weight:700">${yuan(rem)}</td><td>${rem<=0?"<span class=\"badge green\">已结清</span>":"<span class=\"badge red\">未结</span>"}</td><td><button class="btn btn-ghost btn-sm" style="color:var(--red)" title="删除这条挂账" onclick="delCreditOrder('${o.id}')">🗑️</button></td></tr>`;}).join("");
+  h+=creditOrders.filter(o=>!q||kwHit((o.creditCustomer||"")+" "+orderName(o)+" "+String(o.date||""),q)).sort((a,b)=>b.date.localeCompare(a.date)).map(o=>{const rem=orderPaid(o)-(+o.creditPaid||0);return `<tr><td><input class="cuChk" type="checkbox" value="${o.id}" ${cuSel[o.id]?"checked":""} onchange="toggleCuSel('${o.id}',this.checked)"></td><td>${esc(o.date)}</td><td style="font-weight:600">${esc(o.creditCustomer)}</td><td style="color:var(--muted)">${esc(o.seller||"—")}</td><td>${esc(orderName(o))}</td><td style="color:var(--amber)">${yuan(orderPaid(o))}</td><td style="color:var(--green)">${yuan(o.creditPaid||0)}</td><td style="color:${rem<=0?"var(--muted)":"var(--red)"};font-weight:700">${yuan(rem)}</td><td>${rem<=0?"<span class=\"badge green\">已结清</span>":"<span class=\"badge red\">未结</span>"}</td><td><button class="btn btn-ghost btn-sm" style="color:var(--red)" title="删除这条挂账" onclick="delCreditOrder('${o.id}')">🗑️</button></td></tr>`;}).join("");
   h+=`</tbody></table></div></div>`;
   el.innerHTML=h;
 }
@@ -5564,6 +5681,9 @@ function vSecurity(){
   html+=DB.users.map(u=>`<tr><td style="font-weight:600">${esc(u.username)}</td><td><span class="badge ${u.role==='sales'?'amber':'blue'}">${ROLE_NAME[u.role]||u.role}</span></td><td style="font-size:12px;color:var(--muted)">${u.role==='sales'?((u.accountIds||[]).map(id=>{const a=DB.accounts.find(x=>x.id===id);return a?esc(a.name):"—";}).join("、")||"未分配"):"全部账号"}</td>
    <td><div class="table-actions"><div class="icon-btn edit" onclick="openUserForm('${u.id}')">✏️</div><div class="icon-btn" style="color:var(--red)" onclick="delUser('${u.id}')">🗑️</div></div></td></tr>`).join("");
   html+=`</tbody></table></div><div class="card" style="margin:18px 26px"><div style="font-size:13px;line-height:1.9;color:var(--muted)">📌 角色：<b>老板/财务/主管</b> 看全部账号与全部功能；<b>销售</b> 只能看自己“持号”对应的数据，并能对其持号开单、对账、记费用。<br>首次使用请先创建管理员账号。</div></div>`;
+  html+='<div class="card" style="margin:18px 26px"><h4 style="margin-bottom:8px">🗑️ 回收站</h4>'
+   +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">误删的商品 / 订单 / 支出 / 进货 / 借款 / 客户 都能在这里找回（自动保留最近 300 条）。</div>'
+   +'<button class="btn btn-ghost" onclick="openTrash()">打开回收站'+(((DB.trash||[]).length)?('（'+(DB.trash||[]).length+'）'):'')+'</button></div>';
   html+='<div class="card" style="margin:18px 26px"><h4 style="margin-bottom:8px">💾 数据备份 / 恢复</h4>'
    +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">定期备份可防意外丢失；换电脑时用它把数据整体搬过去。恢复会<b>覆盖</b>当前全部数据。</div>'
    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
@@ -5627,7 +5747,7 @@ function saveUser(id){
   else{if(pw.length<4){toast("密码至少 4 位","err");return;}const salt=Math.random().toString(36).slice(2,8);DB.users.push({id:pid(),username:name,salt,hash:hashPass(pw,salt),role,accountIds:accs,debt:debtOk});toast("用户已创建");}
   save();closeModal();render();
 }
-function delUser(id){if(!confirm("确定删除该用户？"))return;if(DB.users.length<=1){toast("至少保留一个管理员账号","warn");return;}DB.users=DB.users.filter(x=>x.id!==id);save();render();toast("用户已删除","warn");}
+function delUser(id){var _u=DB.users.find(x=>x.id===id);if(!_u)return;if(DB.users.length<=1){toast("至少保留一个管理员账号","warn");return;}if(!confirm("确定删除该用户？可在「回收站」找回。"))return;trashPut("user",_u,_u.username||"");DB.users=DB.users.filter(x=>x.id!==id);save();render();toast("用户已删除（可在回收站找回）","warn");}
 function logout(){CUR=null;sessionStorage.removeItem("honghuU");location.reload();}
 
 /* boot */
