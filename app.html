@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-14e</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-14f</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2612,8 +2612,45 @@ function ensureCloudSync(){
   startRealtime();
   updateCloudBadge();
 }
-async function cloudLoad(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return null;try{const r=await fetch(c.url+"/rest/v1/"+c.table+"?select=data&id=eq.main",{headers:{apikey:c.key,Authorization:"Bearer "+c.key}});if(!r.ok)return null;const rows=await r.json();if(rows&&rows[0]&&rows[0].data)return rows[0].data;return null;}catch(e){return null;}}
-async function cloudSave(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return {ok:false,code:"未配置"};try{const r=await fetch(c.url+"/rest/v1/"+c.table,{method:"POST",headers:{apikey:c.key,Authorization:"Bearer "+c.key,"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:"main",data:DB,updated_at:new Date().toISOString()})});const txt=await r.text().catch(()=>"");return {ok:r.ok,code:r.status,body:txt};}catch(e){return {ok:false,code:"网络",body:e.message};}}
+/* ===== 云端同步账号（云端开了 RLS 后必须登录；没配账号时仍按老方式用公开 key，向后兼容）===== */
+let _jwt=null,_jwtExp=0;
+function syncEmail(){ try{return localStorage.getItem("honghuSyncEmail")||"";}catch(e){return "";} }
+function syncPass(){ try{return localStorage.getItem("honghuSyncPass")||"";}catch(e){return "";} }
+function syncAccSet(){ try{return !!(syncEmail()&&syncPass());}catch(e){return false;} }
+function saveSyncAcc(em,pw){ try{ localStorage.setItem("honghuSyncEmail",em||""); localStorage.setItem("honghuSyncPass",pw||""); _jwt=null; }catch(e){} }
+async function cloudSignIn(){
+  const c=getCloud(); if(!c||!c.url||!c.key)return null;
+  const em=syncEmail(),pw=syncPass(); if(!em||!pw)return null;
+  try{
+    const r=await fetch(c.url+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:c.key,"Content-Type":"application/json"},body:JSON.stringify({email:em,password:pw})});
+    if(!r.ok)return null;
+    const j=await r.json(); if(!j||!j.access_token)return null;
+    _jwt=j.access_token; _jwtExp=Date.now()+((+j.expires_in||3600)*1000);
+    return _jwt;
+  }catch(e){ return null; }
+}
+async function cloudAuth(){
+  if(_jwt&&Date.now()<_jwtExp-60000)return _jwt;
+  if(!syncAccSet())return null;
+  return await cloudSignIn();
+}
+function openCloudLogin(){
+  openModal('<div class="modal-head"><h3>☁️ 云端同步账号</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div><div class="modal-body">'
+   +'<div style="font-size:12.5px;color:var(--muted);line-height:1.9;margin-bottom:8px">云端加了权限保护后，需要这个账号才能读写云端数据。电脑和手机各填一次即可（会记住）。账号在电脑的「云端同步账号.txt」里。</div>'
+   +'<div class="field"><label>邮箱</label><input id="ca_em" value="'+esc(syncEmail())+'" placeholder="同步用邮箱"></div>'
+   +'<div class="field"><label>密码</label><input id="ca_pw" type="password" placeholder="同步用密码"></div>'
+   +'</div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveCloudLogin()">保存并登录</button></div>');
+}
+async function saveCloudLogin(){
+  const em=($("#ca_em").value||"").trim(), pw=$("#ca_pw").value||"";
+  if(!em||!pw){ toast("请填写云端账号和密码","err"); return; }
+  saveSyncAcc(em,pw);
+  const j=await cloudSignIn();
+  if(j){ toast("✅ 云端账号已登录，同步已开启"); closeModal(); try{cloudPoll();}catch(e){} }
+  else { toast("登录失败：账号或密码不对，或邮箱还没验证","err"); }
+}
+async function cloudLoad(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return null;try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table+"?select=data&id=eq.main",{headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key)}});if(!r.ok)return null;const rows=await r.json();if(rows&&rows[0]&&rows[0].data)return rows[0].data;return null;}catch(e){return null;}}
+async function cloudSave(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return {ok:false,code:"未配置"};try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table,{method:"POST",headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key),"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:"main",data:DB,updated_at:new Date().toISOString()})});const txt=await r.text().catch(()=>"");return {ok:r.ok,code:r.status,body:txt};}catch(e){return {ok:false,code:"网络",body:e.message};}}
 
 function deepClone(o){try{return JSON.parse(JSON.stringify(o));}catch(e){return o;}}
 function load(){
@@ -3037,6 +3074,7 @@ function cloudCardHtml(){
   return `<div class="card reveal" style="margin:18px 26px">
     <h4>☁️ 云端同步（Supabase 单文档，免费）</h4>
     <p style="color:var(--muted);font-size:12.5px;line-height:1.8;margin-top:4px">✅ 已内置云端配置，<b>任何电脑装上即可自动连接、自动上传/拉取</b>，同事无需填写任何密钥。改动后约 1 秒自动上传；每 10 秒自动获取其他同事的最新数据（切回窗口也会立即同步）。下方配置一般无需修改，仅在更换云端项目时才需填。</p>
+    <div style="margin-top:10px;font-size:12.5px;color:var(--muted)">云端账号：<b>未设置（云端未加保护时可不用）</b> <button class="btn btn-ghost btn-sm" onclick="openCloudLogin()">设置/修改同步账号</button></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
       <div style="flex:1;min-width:220px"><label style="font-size:12px;color:var(--muted)">Supabase 项目 URL</label><input id="cu" value="${esc(c.url)}" oninput="saveCloudCfg(true)" placeholder="https://xxxx.supabase.co" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-size:13px;outline:none;margin-top:4px"></div>
       <div style="flex:1;min-width:220px"><label style="font-size:12px;color:var(--muted)">可发布密钥 / anon 密钥（publishable key）</label><input id="ck" value="${esc(c.key)}" oninput="saveCloudCfg(true)" placeholder="sb_publishable_..." style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-size:13px;outline:none;margin-top:4px"></div>
