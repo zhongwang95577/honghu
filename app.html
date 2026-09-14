@@ -2634,6 +2634,7 @@ function load(){
       });
     }catch(e){}
     (d.products||[]).forEach(function(p){ if(p&&p.variants&&p.variants.length){ var _s=0; p.variants.forEach(function(v){_s+=(+v.stock||0)}); if(_s>0)p.stock=_s; } });
+    normPrices(d);
     return d;
   }catch(e){const d=deepClone(DEFAULT);seed(d);return d;}
 }
@@ -2678,6 +2679,25 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const fmt=n=>(n||0).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2});
 const yuan=n=>"¥"+fmt(n);
+/* 成套单位（对/双/套/副/组）价格工具：这些单位下只看“成对成本/售价” */
+function pairUnits(){return ["对","双","套","副","组"];}
+function isPairUnit(u){return pairUnits().indexOf(String(u==null?"":u).trim())>=0;}
+function effCost(p){p=p||{};var c=+p.cost||0;if(c)return c;if(isPairUnit(p.unit)&&+p.pairCost)return +p.pairCost;return +p.oneCost||+p.pairCost||0;}
+function effPrice(p){p=p||{};var v=+p.price||0;if(v)return v;if(isPairUnit(p.unit)&&+p.pairPrice)return +p.pairPrice;return +p.onePrice||+p.pairPrice||0;}
+/* 价格归一：成套单位下若只填了成对/单个价，则回填基础 cost/price，保证列表、货值、成本、利润口径一致 */
+function normPrices(db){try{(db&&db.products||[]).forEach(function(p){
+  if(!p)return;
+  if(isPairUnit(p.unit)){
+    var f=+p.pairFactor||2;if(!f)f=2;
+    if(!(+p.cost)&&+p.pairCost)p.cost=+p.pairCost;
+    if(!(+p.price)&&+p.pairPrice)p.price=+p.pairPrice;
+    if(!(+p.oneCost)&&+p.pairCost)p.oneCost=Math.round(+p.pairCost/f*100)/100;
+    if(!(+p.onePrice)&&+p.pairPrice)p.onePrice=Math.round(+p.pairPrice/f*100)/100;
+  }else{
+    if(!(+p.cost)&&+p.oneCost)p.cost=+p.oneCost;
+    if(!(+p.price)&&+p.onePrice)p.price=+p.onePrice;
+  }
+});}catch(e){}}
 const pid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
 const uid=p=>DB.accounts.filter(a=>a.platformId===p);
 const pmeta=id=>DB.platforms.find(p=>p.id===id)||{name:"未知",em:"❓",c:"#999"};
@@ -3057,7 +3077,7 @@ function renderInvTbl(){
       <td style="font-weight:600;cursor:pointer" onclick="openProdDetail('${p.id}')" title="点击查看商品详情">${esc(p.name)}${p.barcode?`<div style="font-size:11.5px;color:var(--muted)">${esc(p.barcode)}</div>`:""}${(p.variants&&p.variants.length)?p.variants.map(v=>`<div style="font-size:11.5px;color:var(--muted)">${esc(v.name||"")}：${esc(v.barcode||"")}　库存 ${(v.stock==null?0:v.stock)}</div>`).join(""):""}${(p.units&&p.units.length)?`<div style="font-size:11.5px;color:var(--accent-2)">单位：${esc(p.unit||"个")} / ${p.units.map(u=>esc(u.name)+"="+u.factor+(u.price?("（¥"+u.price+"）"):"")).join(" / ")}</div>`:""}</td>
       <td style="color:var(--muted)">${esc(p.brand||"—")}</td>
       <td>${esc(p.category)}</td>
-      <td>${yuan(p.cost)}</td><td style="color:var(--green)">${yuan(p.price)}</td>
+      <td>${yuan(effCost(p))}</td><td style="color:var(--green)">${yuan(effPrice(p))}</td>
       <td><b>${p.stock}</b> / 安全 ${p.minStock}</td>
       <td>${lowStock?`<span class="badge red">缺货预警</span>`:`<span class="badge green">正常</span>`}</td>
       <td style="color:var(--muted)">${esc(p.location||"—")}</td>
@@ -3114,8 +3134,8 @@ function openProdDetail(id){
     h+='<tr><td style="color:var(--muted)">单位</td><td>'+esc(p.unit||'个')+'</td></tr>';
     h+='<tr><td style="color:var(--muted)">库存 / 安全库存</td><td><b style="font-size:16px;color:'+(low?'var(--red)':'var(--text)')+'">'+(+p.stock||0)+'</b> '+esc(p.unit||'')+' / '+esc(String(p.minStock==null?0:p.minStock))+'　'+(low?'<span class="badge red">缺货预警</span>':'<span class="badge green">正常</span>')+'</td></tr>';
     h+='<tr><td style="color:var(--muted)">存放位置</td><td>'+esc(p.location||'—')+'</td></tr>';
-    h+='<tr><td style="color:var(--muted)">成本价</td><td>'+yuan(p.cost)+'</td></tr>';
-    h+='<tr><td style="color:var(--muted)">售价</td><td style="color:var(--green);font-weight:600">'+yuan(p.price)+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">成本价</td><td>'+yuan(effCost(p))+'</td></tr>';
+    h+='<tr><td style="color:var(--muted)">售价</td><td style="color:var(--green);font-weight:600">'+yuan(effPrice(p))+'</td></tr>';
     if(p.pairCost||p.pairPrice||p.oneCost||p.onePrice){
       h+='<tr><td style="color:var(--muted)">成对成本 / 售价</td><td>'+yuan(p.pairCost)+' / '+yuan(p.pairPrice)+'</td></tr>';
       h+='<tr><td style="color:var(--muted)">单个成本 / 售价</td><td>'+yuan(p.oneCost)+' / '+yuan(p.onePrice)+'</td></tr>';
@@ -3508,6 +3528,7 @@ function saveProduct(id){
   const obj={name,sku:$("#f_sku").value.trim(),barcode:($("#f_barcode")?$("#f_barcode").value.trim():""),unit:($("#f_unit").value.trim()||"个"),category:cat,brand,img:_prodImg||"",variants:(function(){var a=[];document.querySelectorAll("#varRows .varRow").forEach(function(r){var n=r.querySelector(".varName").value.trim();var c2=r.querySelector(".varCode").value.trim();var st=r.querySelector(".varStock")?(+r.querySelector(".varStock").value||0):0;var pq=r.querySelector(".varPq")?(+r.querySelector(".varPq").value||0):0;var spq=r.querySelector(".varSpq")?(+r.querySelector(".varSpq").value||0):0;if(n||c2)a.push({name:n,barcode:c2,stock:st,pq:pq,spq:spq});});return a;})(),units:(function(){var a=[];document.querySelectorAll("#unitRows .unitRow").forEach(function(r){var n=r.querySelector(".unitName").value.trim();var f=+r.querySelector(".unitFactor").value||0;var pr=r.querySelector(".unitPrice")?(+r.querySelector(".unitPrice").value||0):0;var co=r.querySelector(".unitCost")?(+r.querySelector(".unitCost").value||0):0;if(n&&f)a.push({name:n,factor:f,price:pr,cost:co});});return a;})(),
     cost:+((document.getElementById("f_bcost")||{}).value||$("#f_cost").value)||0,price:+((document.getElementById("f_bprice")||{}).value||$("#f_price").value)||0,
     stock:+$("#f_stock").value||0,minStock:+$("#f_min").value||0,location:$("#f_loc").value.trim(),pairCost:+((document.getElementById("f_pairCost")||{}).value||0),pairPrice:+((document.getElementById("f_pairPrice")||{}).value||0),oneCost:+((document.getElementById("f_oneCost")||{}).value||0),onePrice:+((document.getElementById("f_onePrice")||{}).value||0),pairFactor:+((document.getElementById("f_pairFactor")||{}).value||2),oneUnit:((document.getElementById("f_oneUnit")||{}).value||"单只"),pairQty:+((document.getElementById("f_pairQty")||{}).value||0),oneQty:+((document.getElementById("f_oneQty")||{}).value||0)};
+  if(isPairUnit(obj.unit)){var _pf=+obj.pairFactor||2;if(!_pf)_pf=2;if(!obj.cost&&obj.pairCost)obj.cost=obj.pairCost;if(!obj.price&&obj.pairPrice)obj.price=obj.pairPrice;if(!obj.oneCost&&obj.pairCost)obj.oneCost=Math.round(obj.pairCost/_pf*100)/100;if(!obj.onePrice&&obj.pairPrice)obj.onePrice=Math.round(obj.pairPrice/_pf*100)/100;}
   if(obj.variants&&obj.variants.length){var _vs=0;obj.variants.forEach(function(v){_vs+=(+v.stock||0)});obj.stock=_vs;}
   if(cat&&!DB.cats.includes(cat))DB.cats.push(cat);
   if(brand&&!DB.brands.includes(brand))DB.brands.push(brand);
@@ -5323,7 +5344,7 @@ function renderNav(){
   const chip=document.getElementById("userChip");if(chip)chip.innerHTML="👤 "+currentUserName();
 }
 function normStocks(){try{(DB.products||[]).forEach(function(p){if(p&&p.variants&&p.variants.length){var s=0;p.variants.forEach(function(v){s+=(+v.stock||0)});if(s>0)p.stock=s;}});}catch(e){}}
-function render(){normStocks();
+function render(){normStocks();normPrices(DB);
   const allowed=navForRole().map(v=>v[0]);
   if(!allowed.includes(curView))curView="dash";
   const v={dash:vDash,inventory:vInventory,orders:vOrders,recon:vRecon,expense:vExpense,platform:vPlatform,rates:vRates,profit:vProfit,purchase:vPurchase,credit:vCredit,customers:vCustomers,security:vSecurity,debts:vDebts}[curView]();
