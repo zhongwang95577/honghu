@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15b</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15c</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -2680,7 +2680,9 @@ async function saveCloudLogin(){
   else { toast("登录失败：账号或密码不对，或邮箱还没验证","err"); }
 }
 async function cloudLoad(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return null;try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table+"?select=data&id=eq.main",{headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key)}});if(!r.ok)return null;const rows=await r.json();if(rows&&rows[0]&&rows[0].data)return rows[0].data;return null;}catch(e){return null;}}
-async function cloudSave(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return {ok:false,code:"未配置"};try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table,{method:"POST",headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key),"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:"main",data:DB,updated_at:new Date().toISOString()})});const txt=await r.text().catch(()=>"");return {ok:r.ok,code:r.status,body:txt};}catch(e){return {ok:false,code:"网络",body:e.message};}}
+async function cloudSave(){const c=getCloud();if(!c||!c.url||!c.key||!c.table)return {ok:false,code:"未配置"};
+  /* 安全阀：本地数据几乎是空的（没商品没订单没用户）时，禁止覆盖云端，避免空数据把真数据冲掉 */
+  try{ var _pn=(DB.products||[]).length,_on=(DB.orders||[]).length,_un=(DB.users||[]).length; if(_pn===0&&_on===0&&_un===0){ try{logAct("阻止空数据覆盖云端","");}catch(e){} return {ok:false,code:"本地为空，已阻止覆盖云端"}; } }catch(e){}try{const _at=await cloudAuth();const r=await fetch(c.url+"/rest/v1/"+c.table,{method:"POST",headers:{apikey:c.key,Authorization:"Bearer "+(_at||c.key),"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:"main",data:DB,updated_at:new Date().toISOString()})});const txt=await r.text().catch(()=>"");return {ok:r.ok,code:r.status,body:txt};}catch(e){return {ok:false,code:"网络",body:e.message};}}
 
 function deepClone(o){try{return JSON.parse(JSON.stringify(o));}catch(e){return o;}}
 function load(){
@@ -5925,6 +5927,15 @@ async function boot(){
   if(cloudEnabled()){try{const cd=await cloudLoad();if(cd&&cd.orders){const remote=+cd.savedAt||0,local=+DB.savedAt||0;if(remote>local){DB=cd;save();}}}catch(e){}}
   DB.users=DB.users||[];
   const lastU=sessionStorage.getItem("honghuU");CUR=DB.users.find(x=>x.id===lastU)||null;
+  if(!CUR){
+    try{
+      const _rm=JSON.parse(localStorage.getItem("honghuRemember")||"null");
+      if(_rm&&_rm.u&&_rm.p){
+        const _u2=DB.users.find(x=>x.username===_rm.u);
+        if(_u2&&_u2.hash===hashPass(_rm.p,_u2.salt)){ CUR=_u2; sessionStorage.setItem("honghuU",_u2.id); localStorage.setItem("honghuU",_u2.id); }
+      }
+    }catch(e){}
+  }
   if(CUR){render();syncFromServer();}
   else{showLogin(()=>{render();syncFromServer();});}
 }
@@ -6008,7 +6019,7 @@ function saveUser(id){
   save();closeModal();render();
 }
 function delUser(id){var _u=DB.users.find(x=>x.id===id);if(!_u)return;if(DB.users.length<=1){toast("至少保留一个管理员账号","warn");return;}if(!confirm("确定删除该用户？可在「回收站」找回。"))return;trashPut("user",_u,_u.username||"");DB.users=DB.users.filter(x=>x.id!==id);save();render();toast("用户已删除（可在回收站找回）","warn");}
-function logout(){CUR=null;sessionStorage.removeItem("honghuU");location.reload();}
+function logout(){CUR=null;try{sessionStorage.removeItem("honghuU");localStorage.removeItem("honghuU");localStorage.removeItem("honghuRemember");}catch(e){}location.reload();}
 
 /* boot */
 try{ if('serviceWorker' in navigator){ if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){ navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){try{r.unregister();}catch(e){}});}); } else { var _reg=null,_rl=false; navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(function(reg){ _reg=reg; try{reg.update();}catch(e){} reg.addEventListener('updatefound',function(){ var nw=reg.installing; if(!nw)return; nw.addEventListener('statechange',function(){ if(nw.state==='installed'){ try{nw.postMessage('SKIP_WAITING');}catch(e){} if(navigator.serviceWorker.controller){ try{location.reload();}catch(e){} } } }); }); }).catch(function(){}); navigator.serviceWorker.addEventListener('controllerchange',function(){ if(_rl)return; _rl=true; try{location.reload();}catch(e){} }); setInterval(function(){ try{if(_reg)_reg.update();}catch(e){} },120000); document.addEventListener('visibilitychange',function(){ if(!document.hidden){ try{if(_reg)_reg.update();}catch(e){} } }); } } }catch(e){}
