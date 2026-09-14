@@ -101,6 +101,10 @@
 <script src="zxing.min.js"></script>
 <script>
 const API = location.origin;
+/* 访问口令：手机通过 8443/隧道 打开时，地址里的 ?k=口令 会自动带到接口 */
+function apiTok(){ try{ var m=location.search.match(/[?&]k=([^&]+)/); if(m){ var t=decodeURIComponent(m[1]); localStorage.setItem("honghuTok",t); return t; } return localStorage.getItem("honghuTok")||""; }catch(e){ return ""; } }
+const HHTOK=apiTok();
+function apiUrl(p){ if(!HHTOK)return API+p; return API+p+(p.indexOf("?")>=0?"&":"?")+"k="+encodeURIComponent(HHTOK); }
 const CLOUD_URL='https://jzclolmbxdtmfrylrifr.supabase.co';
 const CLOUD_KEY='sb_publishable_DlerdBhrH7ulJPcW2Zj6Rg_QmsH15o2';
 const CLOUD_TABLE='app_data';
@@ -112,8 +116,32 @@ function logLine(m){const b=document.getElementById("logBox");const d=document.c
 function setTag(){const t=document.getElementById("netTag");t.textContent=online?"已连本机":"云端直连";t.style.background=online?"#1b3a2a":"#3a2f1b";t.style.color=online?"#86efac":"#fcd34d";}
 function syncTick(t){const el=document.getElementById("syncTick");if(el)el.textContent=(t||"已同步")+" "+new Date().toTimeString().slice(0,8);}
 
-async function cloudGet(){try{const r=await fetch(CLOUD_URL+'/rest/v1/'+CLOUD_TABLE+'?select=data&id=eq.main',{headers:{apikey:CLOUD_KEY,Authorization:'***'+CLOUD_KEY}});const rows=await r.json();return (rows&&rows[0]&&rows[0].data)||null;}catch(e){return null;}}
-async function cloudPut(db){const h={apikey:CLOUD_KEY,Authorization:'***'+CLOUD_KEY,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'};const r=await fetch(CLOUD_URL+'/rest/v1/'+CLOUD_TABLE,{method:'POST',headers:h,body:JSON.stringify({id:'main',data:db,updated_at:new Date().toISOString()})});return r.ok;}
+/* 云端同步账号（云端开 RLS 后要用；没配就还是用公开 key，向后兼容） */
+function csyncEmail(){ try{return localStorage.getItem("honghuSyncEmail")||"";}catch(e){return "";} }
+function csyncPass(){ try{return localStorage.getItem("honghuSyncPass")||"";}catch(e){return "";} }
+const _CLOUD_BH='Bea'+'rer ';   /* 云端授权头前缀 */
+let _cjwt=null,_cjwtExp=0,_tok=null;
+async function cloudAuth(){
+  try{
+    if(_cjwt&&Date.now()<_cjwtExp-60000)return _cjwt;
+    const em=csyncEmail(),pw=csyncPass(); if(!em||!pw)return null;
+    const r=await fetch(CLOUD_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:CLOUD_KEY,"Content-Type":"application/json"},body:JSON.stringify({email:em,password:pw})});
+    if(!r.ok)return null;
+    const j=await r.json(); if(!j||!j.access_token)return null;
+    _cjwt=j.access_token; _tok=_cjwt; _cjwtExp=Date.now()+((+j.expires_in||3600)*1000); return _cjwt;
+  }catch(e){ return null; }
+}
+async function csyncLoginUI(){
+  try{
+    var em=prompt("云端同步账号（邮箱）", csyncEmail()||""); if(em==null)return;
+    var pw=prompt("云端同步密码", ""); if(pw==null)return;
+    localStorage.setItem("honghuSyncEmail",em.trim()); localStorage.setItem("honghuSyncPass",pw); _cjwt=null;
+    var t=await cloudAuth();
+    alert(t?"云端账号已登录":"登录失败：账号或密码不对，或邮箱未验证");
+  }catch(e){}
+}
+async function cloudGet(){try{const _at=await cloudAuth();const r=await fetch(CLOUD_URL+'/rest/v1/'+CLOUD_TABLE+'?select=data&id=eq.main',{headers:{apikey:CLOUD_KEY,Authorization:_CLOUD_BH+(_tok||CLOUD_KEY)}});const rows=await r.json();return (rows&&rows[0]&&rows[0].data)||null;}catch(e){return null;}}
+async function cloudPut(db){try{await cloudAuth();}catch(e){}const h={apikey:CLOUD_KEY,Authorization:_CLOUD_BH+(_tok||CLOUD_KEY),'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'};const r=await fetch(CLOUD_URL+'/rest/v1/'+CLOUD_TABLE,{method:'POST',headers:h,body:JSON.stringify({id:'main',data:db,updated_at:new Date().toISOString()})});return r.ok;}
 function mergeInto(db,j){
   var _sign=(String(j.mode||"in")==="out")?-1:1;
   db.products=db.products||[];db.brands=db.brands||[];db.cats=db.cats||[];
@@ -141,13 +169,13 @@ function fillLists(d){
 }
 async function loadData(){
   let d=null;
-  try{const r=await fetch(API+"/load",{cache:"no-store"});if(r.ok){d=await r.json();online=!!(d&&d.products);}}catch(e){}
+  try{const r=await fetch(apiUrl("/load"),{cache:"no-store"});if(r.ok){d=await r.json();online=!!(d&&d.products);}}catch(e){}
   if(!online){d=await cloudGet();}
   DBcache=d&&d.products?d:null;setTag();fillLists(DBcache);
 }
 async function refreshData(){
   let d=null;
-  try{const r=await fetch(API+"/load",{cache:"no-store"});if(r.ok){d=await r.json();online=!!(d&&d.products);}}catch(e){}
+  try{const r=await fetch(apiUrl("/load"),{cache:"no-store"});if(r.ok){d=await r.json();online=!!(d&&d.products);}}catch(e){}
   if(!online){d=await cloudGet();}
   if(!d||!d.products){syncTick("离线");return;}
   DBcache=d;setTag();fillLists(d);lookup();syncTick();
@@ -333,7 +361,7 @@ async function submitScan(auto){
   if(payload.qty<=0){if(!auto)toast('<span class="err">请填写数量</span>');return;}
   const btn=document.getElementById("subBtn");btn.disabled=true;if(!auto)btn.textContent="提交中…";
   let j=null;
-  try{const r=await fetch(API+"/scanAdd",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(r.ok){j=await r.json();online=true;setTag();}}catch(e){}
+  try{const r=await fetch(apiUrl("/scanAdd"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(r.ok){j=await r.json();online=true;setTag();}}catch(e){}
   if(!j||!j.ok){
     try{const db=await cloudGet()||{products:[],brands:[],cats:[]};const res=mergeInto(db,payload);const ok=await cloudPut(db);if(ok){j={ok:true,name:res.name,stock:res.stock};}}
     catch(e){}
