@@ -34,6 +34,7 @@
       var r=await fetch('同步配置.json'+(k?('?k='+encodeURIComponent(k)):''),{cache:'no-store'});
       if(r.ok){ var j=await r.json(); if(j&&j.tok){ try{localStorage.setItem('honghuTok',String(j.tok));}catch(e){} } if(j&&j.email&&j.pass){ try{localStorage.setItem('honghuSyncEmail',String(j.email));localStorage.setItem('honghuSyncPass',String(j.pass));}catch(e){} } msg.textContent='已读取本机配置'; }
     }catch(e){}
+    try{ localStorage.setItem('honghuForcePull','1'); }catch(e){}
     var dest='app.html'+(k?('?k='+encodeURIComponent(k)):'');
     location.replace(dest);
   })();
