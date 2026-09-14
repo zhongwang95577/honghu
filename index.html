@@ -2,8 +2,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -40,4 +40,9 @@
 <script>
   if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
 </script>
+<!-- hhk-attach --><script>
+(function(){try{
+  var m=location.search.match(/[?&]k=([^&]+)/); if(!m)return; var k=m[1];
+  document.querySelectorAll('a[href]').forEach(function(a){var h=a.getAttribute('href');if(!h)return;if(/^(https?:|mailto:|#|javascript:)/i.test(h))return;a.setAttribute('href',h+(h.indexOf('?')>=0?'&':'?')+'k='+k);});
+})()}catch(e){}</script>
 </body></html>
