@@ -2549,6 +2549,10 @@ try{var _v0=document.getElementById("view");if(_v0)_v0.innerHTML='<div style="pa
 let curView="dash";
 let reconFilters={platformId:"all",accountId:"all"};
 const API=location.protocol==="file:"?"http://localhost:8899":location.origin;
+/* 访问口令：用 8443（局域网/手机/公网）打开时，地址里的 ?k=口令 会自动带到所有接口 */
+function apiTok(){ try{ var m=location.search.match(/[?&]k=([^&]+)/); if(m){ var t=decodeURIComponent(m[1]); localStorage.setItem("honghuTok",t); return t; } return localStorage.getItem("honghuTok")||""; }catch(e){ return ""; } }
+const HHTOK=apiTok();
+function apiUrl(p){ if(!HHTOK)return API+p; return API+p+(p.indexOf("?")>=0?"&":"?")+"k="+encodeURIComponent(HHTOK); }
 /* ---- 云端存储（Supabase 单文档） ---- */
 const CLOUD_DEFAULT={url:"https://jzclolmbxdtmfrylrifr.supabase.co",key:"sb_publishable_DlerdBhrH7ulJPcW2Zj6Rg_QmsH15o2",table:"app_data",enabled:true};
 function getCloud(){
@@ -2572,13 +2576,13 @@ async function cloudPoll(){
   if(t>(+DB.savedAt||0)+2000){
     _pulling=true;updateCloudBadge("☁️ 正在获取最新…");
     const d=await cloudLoad();
-    if(d&&d.orders){DB=d;DB.savedAt=Math.max(+DB.savedAt||0,t);try{localStorage.setItem("gaiMallDB",JSON.stringify(DB));}catch(e){}try{fetch(API+"/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:DB})}).catch(()=>{});}catch(e){}render();toast("☁️ 已同步其他同事的最新数据");}
+    if(d&&d.orders){DB=d;DB.savedAt=Math.max(+DB.savedAt||0,t);try{localStorage.setItem("gaiMallDB",JSON.stringify(DB));}catch(e){}try{fetch(apiUrl("/save"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:DB})}).catch(()=>{});}catch(e){}render();toast("☁️ 已同步其他同事的最新数据");}
     _pulling=false;updateCloudBadge();
   }
 }
 async function pollLocalServer(){
   try{
-    const r=await fetch(API+"/load",{cache:"no-store"});
+    const r=await fetch(apiUrl("/load"),{cache:"no-store"});
     if(!r.ok)return;
     const d=await r.json();
     if(d&&d.orders){const remote=+d.savedAt||0;if(remote>(+DB.savedAt||0)+1500){DB=d;try{localStorage.setItem("gaiMallDB",JSON.stringify(DB));}catch(e){}render();toast("📦 已同步手机扫码/本机最新数据");}}
@@ -2643,7 +2647,7 @@ function load(){
 function save(){
   DB.savedAt=Date.now();
   /* 1) 先写服务器/D 盘（最可靠的那份），再写浏览器缓存 */
-  try{fetch(API+"/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:DB})}).catch(()=>{});}catch(e){}
+  try{fetch(apiUrl("/save"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:DB})}).catch(()=>{});}catch(e){}
   /* 2) 浏览器缓存：可能因为配额满/隐私模式失败 —— 必须提示，绝不静默丢数据 */
   var _lsErr=null;
   try{
@@ -3067,7 +3071,7 @@ async function scanInfo(){
   const mobile=("ontouchstart" in window)||window.innerWidth<820;
   if(mobile){ location.href="scan.html"; return; }
   let ip="",hp=0;
-  try{const r=await fetch(API+"/lanip",{cache:"no-store"});const j=await r.json();ip=j&&j.ip;hp=(j&&j.httpsPort)||0;}catch(e){}
+  try{const r=await fetch(apiUrl("/lanip"),{cache:"no-store"});const j=await r.json();ip=j&&j.ip;hp=(j&&j.httpsPort)||0;}catch(e){}
   const lanUrl=ip?(hp?("https://"+ip+":"+hp+"/scan"):("http://"+ip+":8899/scan")):"";
   const localUrl=(location.protocol||"http:")+"//"+location.host+"/scan";
   const target="https://magical-queijadas-1a64b3.netlify.app/scan.html"||lanUrl||localUrl;
@@ -3277,7 +3281,7 @@ async function forceCloudSync(){
       if(d&&d.orders){
         DB=d; DB.savedAt=Math.max(+DB.savedAt||0,t);
         try{ localStorage.setItem('gaiMallDB',JSON.stringify(DB)); }catch(e){}
-        try{ await fetch(API+'/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:DB})}); }catch(e){}
+        try{ await fetch(apiUrl('/save'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:DB})}); }catch(e){}
         try{ render(); }catch(e){}
         toast('✅ 已拉取云端最新数据');
         return;
@@ -5744,7 +5748,7 @@ function animate(){
 /* 连接 D 盘数据服务：启动时若 D 盘数据文件较新则恢复，并提示已接通 */
 async function syncFromServer(){
   try{
-    const r=await fetch(API+"/load",{cache:"no-store"});
+    const r=await fetch(apiUrl("/load"),{cache:"no-store"});
     if(!r.ok){return;}
     const d=await r.json();
     // 服务可达即提示（无论是备份还是恢复）
@@ -5848,7 +5852,7 @@ function createAdmin(){
   const d=document.getElementById("loginOv");if(d)d.remove();if(window._bootDone){window._bootDone();window._bootDone=null;}
 }
 async function boot(){
-  try{const r=await fetch(API+"/load",{cache:"no-store"});if(r.ok){const d=await r.json();if(d&&d.orders){const remote=+d.savedAt||0,local=+DB.savedAt||0;if(remote>local){DB=d;save();}}}}catch(e){}
+  try{const r=await fetch(apiUrl("/load"),{cache:"no-store"});if(r.ok){const d=await r.json();if(d&&d.orders){const remote=+d.savedAt||0,local=+DB.savedAt||0;if(remote>local){DB=d;save();}}}}catch(e){}
   if(cloudEnabled()){try{const cd=await cloudLoad();if(cd&&cd.orders){const remote=+cd.savedAt||0,local=+DB.savedAt||0;if(remote>local){DB=cd;save();}}}catch(e){}}
   DB.users=DB.users||[];
   const lastU=sessionStorage.getItem("honghuU");CUR=DB.users.find(x=>x.id===lastU)||null;
