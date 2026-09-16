@@ -202,7 +202,7 @@ window.addEventListener('unhandledrejection',function(){});
     <div class="side-foot">
       <div id="cloudBadge" style="margin-bottom:8px;font-size:11px;line-height:1.5;color:var(--muted)"></div>
       <div id="userChip" style="margin-bottom:8px;font-size:12px;color:var(--muted)"></div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-15g</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">版本 v9-16a</div>
       <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="softRefresh()" title="卡顿时点这里，或按 F5 / Ctrl+R 重新载入">🔄 刷新</button><button class="btn btn-ghost btn-sm" onclick="logout()">🚪 退出登录</button></div>
     </div>
   </aside>
@@ -3435,82 +3435,192 @@ function openProdDetail(id){
     openModal(h);
   }catch(e){ toast('打不开详情：'+e.message,'warn'); }
 }
+/* ===== 出库 / 入库：可多选 + 逐个选规格 + 扫码加入 ===== */
+var smCart=[];
+function smFind(id,arr){arr=arr||DB.products||[];for(var i=0;i<arr.length;i++){if(arr[i].id===id)return arr[i];}return null;}
+function smMaker(){try{return (typeof CUR!=='undefined'&&CUR&&CUR.username)?CUR.username:'';}catch(e){return '';}}
+function smProdCur(p,vi){
+  if(!p)return 0;
+  if(p.variants&&p.variants.length&&vi>=0&&p.variants[vi])return (+p.variants[vi].stock||0);
+  return (+p.stock||0);
+}
 function openStockMove(){
-  const list=(DB.products||[]).map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+(p.unit?('（'+p.unit+'）'):'')+'</option>'; }).join('');
-  openModal('<div class="modal-head"><h3>📤 出库 / 📥 入库（不用开单、不用条码）</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
+  smCart=[];
+  openModal('<div class="modal-head"><h3>📤 出库 / 📥 入库（可多选商品）</h3><div class="icon-btn" onclick="closeModal()">✖️</div></div>'
    +'<div class="modal-body">'
    +'<div class="field"><label>类型</label><select id="sm_dir" onchange="onDirPick()"><option value="out">📤 出库（减库存）</option><option value="in">📥 入库（加库存）</option></select></div>'
-   +'<div class="field"><label class="req">商品（打几个字就能搜）</label><input id="sm_q" placeholder="输入 商品名 / SKU / 条码 / 品牌" autocomplete="off" oninput="renderMovePick()"><div id="sm_sel" class="hint" style="margin-top:6px">未选择商品</div><div id="sm_list" style="max-height:36vh;overflow:auto;margin-top:6px"></div><input type="hidden" id="sm_prod"></div>'
-   +'<div class="field" id="sm_varWrap" style="display:none"><label>规格</label><select id="sm_var" onchange="onMoveProd()"></select></div>'
-   +'<div class="field"><div class="row"><div><label class="req">数量</label><input id="sm_qty" type="number" step="0.01" value="1"></div><div><label>原因</label><select id="sm_reason"><option value="手工调整">手工调整</option><option value="损耗">损耗</option><option value="赠送">赠送</option><option value="退货">退货</option><option value="补货">补货</option><option value="其他">其他</option></select></div></div></div>'
-   +'<div class="field"><label>备注（可选）</label><input id="sm_note" placeholder="如：给张师傅 2 对"></div>'
-   +'<div class="hint">当前库存：<b id="sm_stockTip">—</b></div>'
+   +'<div class="field"><label class="req">加商品</label>'
+     +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn btn-ghost btn-sm" onclick="smScan()">📷 扫码加商品</button><input id="sm_q" placeholder="🔍 输入 商品名 / SKU / 条码 / 品牌" autocomplete="off" oninput="renderMovePick()" style="flex:1;min-width:150px"></div>'
+     +'<input type="hidden" id="sm_bc" oninput="smScanGot(this.value)" autocomplete="off">'
+     +'<div style="margin-top:8px"><select id="sm_pickAll" onchange="smPickAll(this)"></select></div>'
+     +'<div id="sm_list" style="max-height:30vh;overflow:auto;margin-top:8px"></div>'
+   +'</div>'
+   +'<div class="field"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><label style="margin:0">已选清单（可加多个，逐个选规格 / 填数量）</label><span class="hint" id="sm_total"></span></div><div id="sm_cart"></div></div>'
+   +'<div class="field"><div class="row"><div><label>原因</label><select id="sm_reason"><option value="手工调整">手工调整</option><option value="损耗">损耗</option><option value="赠送">赠送</option><option value="退货">退货</option><option value="补货">补货</option><option value="其他">其他</option></select></div><div><label>备注（可选）</label><input id="sm_note" placeholder="如：给张师傅 2 对"></div></div></div>'
+   +'<div class="hint">同款有多个规格（如 白光 / 黄光）时，必须在清单里选规格，否则库存会加错。</div>'
    +'</div>'
    +'<div class="modal-foot"><button class="btn btn-ghost" onclick="openStockLogs()">📋 出入库记录</button><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doStockMove()">确认</button></div>');
-  onMoveProd();
-  renderMovePick();
+  fillMovePickAll();renderMovePick();renderSmCart();onDirPick();smBindList();
 }
+function fillMovePickAll(){
+  var s=document.getElementById('sm_pickAll'); if(!s)return;
+  var ps=(DB.products||[]).slice().sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'zh');});
+  s.innerHTML='<option value="">…或从全部商品里选（手机推荐）</option>'+ps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+(p.unit?('（'+p.unit+'）'):'')+' · 库存 '+(p.stock==null?0:p.stock)+'</option>';}).join("");
+}
+function smPickAll(sel){try{ if(sel.value){ addMoveToCart(sel.value,-1); sel.value=""; } }catch(e){}}
 function renderMovePick(){
   try{
-    const q=((document.getElementById('sm_q')||{}).value||'').trim().toLowerCase();
-    const box=document.getElementById('sm_list'); if(!box)return;
-    let ps=(DB.products||[]).slice();
-    if(q) ps=ps.filter(function(p){ return kwHit(prodHay(p),q); });
-    const shown=ps.slice(0,60);
+    var q=((document.getElementById('sm_q')||{}).value||'').trim().toLowerCase();
+    var box=document.getElementById('sm_list'); if(!box)return;
+    var ps=(DB.products||[]).slice();
+    if(q)ps=ps.filter(function(p){return kwHit(prodHay(p),q);});
+    var shown=ps.slice(0,60);
     box.innerHTML=shown.length?shown.map(function(p){
-      return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:11px;margin-bottom:6px;background:var(--bg-2);cursor:pointer" onclick="pickMoveProd(\''+p.id+'\')">'
-        +'<span><b>'+esc(p.name)+'</b>'+(p.sku?('<span style="color:var(--muted);font-size:12px"> · '+esc(p.sku)+'</span>'):'')+(p.brand?('<span style="color:var(--muted);font-size:12px"> · '+esc(p.brand)+'</span>'):'')+'</span>'
-        +'<span style="white-space:nowrap;color:var(--muted);font-size:12px">库存 '+((p.stock==null?0:p.stock))+(p.unit||'')+'</span>'
+      var hz=(p.variants&&p.variants.length)?('<span style="background:#eef2ff;color:#4f46e5;font-size:11px;padding:2px 7px;border-radius:20px;margin-left:6px">'+p.variants.length+'个规格</span>'):'';
+      return '<div data-pid="'+p.id+'" style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:11px 12px;border:1px solid var(--border);border-radius:11px;margin-bottom:6px;background:var(--bg-2);cursor:pointer">'
+        +'<span style="min-width:0"><b>'+esc(p.name)+'</b>'+hz+(p.sku?('<span style="color:var(--muted);font-size:12px"> · '+esc(p.sku)+'</span>'):'')+(p.brand?('<span style="color:var(--muted);font-size:12px"> · '+esc(p.brand)+'</span>'):'')+'</span>'
+        +'<span style="white-space:nowrap;color:var(--muted);font-size:12px">库存 '+((p.stock==null?0:p.stock))+(p.unit||'')+'　➕</span>'
         +'</div>';
     }).join(''):'<div class="hint">没找到商品（换个词试试）</div>';
-    if(ps.length>shown.length) box.innerHTML+='<div class="hint">还有 '+(ps.length-shown.length)+' 个，继续输入缩小范围</div>';
+    if(ps.length>shown.length)box.innerHTML+='<div class="hint">还有 '+(ps.length-shown.length)+' 个，继续输入缩小范围</div>';
   }catch(e){}
 }
-function pickMoveProd(id){
-  try{ const h=document.getElementById('sm_prod'); if(h)h.value=id; }catch(e){}
-  try{ const p=(DB.products||[]).find(function(x){return x.id===id;}); const s=document.getElementById('sm_sel'); if(s)s.textContent=p?('已选：'+p.name+(p.sku?(' / '+p.sku):'')):'未选择商品'; }catch(e){}
-  try{ const l=document.getElementById('sm_list'); if(l)l.innerHTML=''; }catch(e){}
-  onMoveProd();
-}
-function onDirPick(){ try{ const d=(document.getElementById('sm_dir')||{}).value; const r=document.getElementById('sm_reason'); if(r){ r.value=(d==='in'?'补货':'手工调整'); } }catch(e){} }
-function onMoveProd(){
+function smBindList(){
   try{
-    const pid=(document.getElementById('sm_prod')||{}).value;
-    const p=(DB.products||[]).find(function(x){return x.id===pid;});
-    const wrap=document.getElementById('sm_varWrap'), sel=document.getElementById('sm_var'), tip=document.getElementById('sm_stockTip');
-    if(wrap&&sel){
-      if(p&&p.variants&&p.variants.length){
-        wrap.style.display='';
-        sel.innerHTML=p.variants.map(function(v,i){ return '<option value="'+i+'">'+esc(v.name||('规格'+(i+1)))+(v.barcode?(' · '+esc(v.barcode)):'')+'（库存 '+(v.stock==null?0:v.stock)+'）</option>'; }).join('');
-      } else { wrap.style.display='none'; sel.innerHTML=''; }
-    }
-    if(tip)tip.textContent=(p?((p.stock==null?0:p.stock)+' '+(p.unit||'')):'—');
+    var box=document.getElementById('sm_list'); if(!box)return;
+    box.onclick=function(ev){
+      var el=ev.target;
+      while(el&&el!==box&&(!el.getAttribute||!el.getAttribute('data-pid')))el=el.parentNode;
+      if(!el||el===box||!el.getAttribute)return;
+      addMoveToCart(el.getAttribute('data-pid'),-1);
+    };
   }catch(e){}
+}
+function addMoveToCart(pid,vi){
+  try{
+    var p=smFind(pid); if(!p){toast('找不到商品','warn');return;}
+    var hasV=!!(p.variants&&p.variants.length);
+    if(!hasV)vi=-1;
+    if(vi==null||vi<0)vi=-1;
+    if(hasV&&vi<0&&p.variants.length===1)vi=0;
+    var hit=null;
+    for(var i=0;i<smCart.length;i++){if(smCart[i].pid===pid&&smCart[i].vi===vi)hit=smCart[i];}
+    if(hit)hit.qty=(+hit.qty||0)+1; else smCart.push({pid:pid,vi:vi,qty:1});
+    renderSmCart();
+    toast('已加入清单：'+p.name+(vi>=0?(' / '+(p.variants[vi].name||'')):''));
+    if(hasV&&vi<0)toast('⚠️「'+p.name+'」有 '+p.variants.length+' 个规格，请在清单里选规格','warn');
+  }catch(e){toast('加入失败：'+e.message,'warn');}
+}
+function renderSmCart(){
+  try{
+    var box=document.getElementById('sm_cart'); if(!box)return;
+    if(!smCart.length){
+      box.innerHTML='<div class="hint" style="padding:12px;border:1px dashed var(--border);border-radius:12px;text-align:center">还没有商品：用上面的搜索框、下拉框或「📷 扫码加商品」加入，可一次加多个</div>';
+      smUpdateTotal();return;
+    }
+    box.innerHTML=smCart.map(function(r,i){
+      var p=smFind(r.pid)||{};
+      var hasV=!!(p.variants&&p.variants.length);
+      var spec;
+      if(hasV){
+        spec='<select onchange="smSetVar('+i+',this.value)" style="flex:1;min-width:130px;padding:9px 10px;border-radius:10px;border:1px solid '+(r.vi<0?'var(--amber)':'var(--border)')+';background:#fff;color:var(--text);font-size:13px">'
+          +'<option value="">⚠️ 请选择规格</option>'
+          +p.variants.map(function(v,j){return '<option value="'+j+'"'+(+r.vi===j?' selected':'')+'>'+esc(v.name||('规格'+(j+1)))+'（库存 '+(v.stock==null?0:v.stock)+(p.unit||'')+'）</option>';}).join('')
+          +'</select>';
+      } else {
+        spec='<span class="hint" style="flex:1">无规格</span>';
+      }
+      return '<div style="border:1px solid '+((hasV&&r.vi<0)?'var(--amber)':'var(--border)')+';border-radius:12px;padding:10px;margin-bottom:8px;background:var(--bg-2)">'
+       +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="font-weight:700;font-size:13px;min-width:0">'+esc(p.name||'')+(p.unit?(' <span style="font-weight:400;color:var(--muted);font-size:11.5px">'+esc(p.unit)+'</span>'):'')+'</div><div class="icon-btn" style="color:var(--red)" onclick="smDel('+i+')">🗑️</div></div>'
+       +'<div style="font-size:11.5px;color:var(--muted);margin:4px 0 8px">当前库存 '+smProdCur(p,+r.vi)+(p.unit||'')+(p.barcode?(' · 条码 '+esc(p.barcode)):'')+'</div>'
+       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+spec
+       +'<input type="number" step="0.01" min="0" value="'+(r.qty==null?1:r.qty)+'" oninput="smSetQty('+i+',this.value)" style="width:110px;padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px">'
+       +'</div></div>';
+    }).join('');
+    smUpdateTotal();
+  }catch(e){}
+}
+function smSetVar(i,v){try{smCart[i].vi=(v===''?-1:+v);renderSmCart();}catch(e){}}
+function smSetQty(i,v){try{smCart[i].qty=v;}catch(e){}}
+function smDel(i){try{smCart.splice(i,1);renderSmCart();}catch(e){}}
+function smUpdateTotal(){
+  try{
+    var box=document.getElementById('sm_total'); if(!box)return;
+    var dir=((document.getElementById('sm_dir')||{}).value)||'out';
+    var n=smCart.length,t=0;
+    smCart.forEach(function(r){t+=(+r.qty||0);});
+    box.textContent=n?('共 '+n+' 项 · 合计 '+t+' 件'):'';
+    var b=document.querySelector('#modal .modal-foot .btn-primary');
+    if(b)b.textContent=(dir==='in'?'✅ 确认入库':'✅ 确认出库')+(n?('（'+n+' 项）'):'');
+  }catch(e){}
+}
+function smScan(){
+  try{
+    var inp=document.getElementById('sm_bc'); if(!inp){toast('请先打开出入库窗口','warn');return;}
+    inp.value='';
+    if(typeof openScanPick==='function')openScanPick('#sm_bc');
+    else toast('此环境不支持扫码，请用搜索框','warn');
+  }catch(e){toast('扫码打不开：'+e.message,'warn');}
+}
+function smScanGot(code){
+  try{
+    code=String(code||'').trim(); if(!code)return;
+    var inp=document.getElementById('sm_bc'); if(inp)inp.value='';
+    var ps=DB.products||[],p=null,vi=-1,multi=false,i;
+    for(i=0;i<ps.length;i++){ if(String(ps[i].barcode||'').trim()===code){p=ps[i];break;} }
+    if(p){
+      if(p.variants&&p.variants.length){ if(p.variants.length===1)vi=0; else multi=true; }
+    } else {
+      var hits=[];
+      ps.forEach(function(x){(x.variants||[]).forEach(function(v,j){ if(String(v.barcode||'').trim()===code)hits.push({x:x,j:j}); });});
+      if(hits.length){ p=hits[0].x; if(hits.length===1)vi=hits[0].j; else multi=true; }
+    }
+    if(!p){
+      toast('❌ 码库没有这个条码：'+code,'warn');
+      var q=document.getElementById('sm_q'); if(q){q.value=code;renderMovePick();}
+      return;
+    }
+    addMoveToCart(p.id,vi);
+    if(multi)toast('⚠️「'+p.name+'」有多个规格，请在清单里选规格','warn');
+  }catch(e){toast('扫码处理失败：'+e.message,'warn');}
+}
+function onDirPick(){
+  try{ var d=(document.getElementById('sm_dir')||{}).value; var r=document.getElementById('sm_reason'); if(r){ r.value=(d==='in'?'补货':'手工调整'); } }catch(e){}
+  smUpdateTotal();
 }
 function doStockMove(){
   try{
-    const dir=(document.getElementById('sm_dir')||{}).value||'out';
-    const pid=(document.getElementById('sm_prod')||{}).value;
-    const qty=+(document.getElementById('sm_qty')||{}).value||0;
-    const reason=((document.getElementById('sm_reason')||{}).value)||'';
-    const note=((document.getElementById('sm_note')||{}).value)||'';
-    if(!pid){ toast('请选择商品','warn'); return; }
-    if(!(qty>0)){ toast('数量要大于 0','warn'); return; }
-    const p=(DB.products||[]).find(function(x){return x.id===pid;});
-    if(!p){ toast('找不到商品','warn'); return; }
-    let vi=-1, vname='';
-    try{ const w=document.getElementById('sm_varWrap'); if(w&&w.style.display!=='none'){ vi=+((document.getElementById('sm_var')||{}).value); if(p.variants&&p.variants[vi])vname=p.variants[vi].name||''; } }catch(e){}
-    const delta=(dir==='in'?qty:-qty);
-    if(vi>=0&&p.variants&&p.variants[vi]){ p.variants[vi].stock=(+p.variants[vi].stock||0)+delta; }
-    else { p.stock=(+p.stock||0)+delta; }
-    if(typeof normStocks==='function') normStocks();
-    DB.stockLogs=DB.stockLogs||[];
-    DB.stockLogs.unshift({id:'sl'+Date.now()+Math.floor(Math.random()*1000),date:todayStr(),dir:dir,name:p.name,spec:vname,qty:qty,reason:reason,note:note,maker:(CUR&&CUR.username)||''});
+    var dir=(document.getElementById('sm_dir')||{}).value||'out';
+    var reason=((document.getElementById('sm_reason')||{}).value)||'';
+    var note=((document.getElementById('sm_note')||{}).value)||'';
+    if(!smCart.length){toast('请先添加商品','warn');return;}
+    var badSpec=[],badQty=[],lack=[];
+    smCart.forEach(function(r,i){
+      var p=smFind(r.pid); if(!p){badQty.push(i+1);return;}
+      var q=+r.qty||0;
+      if(!(q>0))badQty.push(i+1);
+      if(p.variants&&p.variants.length&&(+r.vi)<0)badSpec.push(i+1);
+      if(dir==='out'&&q>0){ var cur=smProdCur(p,(+r.vi)); if(q>cur)lack.push(p.name+(((+r.vi)>=0&&p.variants&&p.variants[+r.vi])?(' / '+(p.variants[+r.vi].name||'')):'')+'（现有 '+cur+(p.unit||'')+'）'); }
+    });
+    if(badQty.length){toast('第 '+badQty.join('、')+' 行数量不对','warn');return;}
+    if(badSpec.length){renderSmCart();toast('第 '+badSpec.join('、')+' 行还没选规格','warn');return;}
+    if(dir==='out'&&lack.length){ if(!confirm('以下商品库存不足，仍要出库吗？\n'+lack.join('\n')))return; }
+    var done=[],now=todayStr();
+    smCart.forEach(function(r){
+      var p=smFind(r.pid); if(!p)return;
+      var q=+r.qty||0, delta=(dir==='in'?q:-q), vname='';
+      if(p.variants&&p.variants.length&&(+r.vi)>=0&&p.variants[+r.vi]){ var v=p.variants[+r.vi]; vname=v.name||''; v.stock=(+v.stock||0)+delta; }
+      else { p.stock=(+p.stock||0)+delta; }
+      DB.stockLogs=DB.stockLogs||[];
+      DB.stockLogs.unshift({id:'sl'+Date.now()+Math.floor(Math.random()*1000),date:now,dir:dir,name:p.name,spec:vname,qty:q,reason:reason,note:note,maker:smMaker()});
+      done.push(p.name+(vname?(' / '+vname):'')+' × '+q);
+    });
     if(DB.stockLogs.length>2000)DB.stockLogs.length=2000;
-    try{ logAct((dir==='in'?'入库':'出库'), p.name+(vname?(' / '+vname):'')+' × '+qty+(reason?('（'+reason+'）'):'')); }catch(e){}
+    if(typeof normStocks==='function')normStocks();
+    try{ logAct((dir==='in'?'入库':'出库'), done.join('；')+(reason?('（'+reason+'）'):'')); }catch(e){}
     try{ save(); }catch(e){}
     closeModal();
-    toast((dir==='in'?'✅ 已入库 ':'✅ 已出库 ')+p.name+' × '+qty);
+    toast('✅ 已'+(dir==='in'?'入库':'出库')+' '+done.length+' 项：'+done.join('、'));
     try{ render(); }catch(e){}
   }catch(e){ toast('操作失败：'+e.message,'warn'); }
 }
@@ -5674,6 +5784,7 @@ function clearData(){
 let cuQ="";
 let cF={p:"all",a:"all"};
 var cuSel={};
+var lgF={from:"",to:"",u:"all",a:"all",q:"",d:1,run:false};
 function toggleCuSel(id,on){if(on)cuSel[id]=1;else delete cuSel[id];}
 function cuSelAll(on){document.querySelectorAll("#creditBody .cuChk").forEach(function(c){c.checked=on;if(on)cuSel[c.value]=1;else delete cuSel[c.value];});}
 function delCreditOrder(id){
@@ -5997,13 +6108,74 @@ function vSecurity(){
    +'<button class="btn btn-primary" onclick="backupAll()">⬇️ 导出全部数据（备份文件）</button>'
    +'<label class="btn btn-ghost" style="cursor:pointer;margin:0">⬆️ 从备份恢复<input type="file" accept=".json,application/json" style="display:none" onchange="restoreAll(this)"></label>'
    +'</div></div>';
-  html+='<div class="card" style="margin:18px 26px"><h4 style="margin-bottom:8px">📝 操作日志（最近 200 条）</h4>'
-   +'<div style="margin-bottom:8px"><button class="btn btn-ghost btn-sm" onclick="exportCsv((DB.logs||[]).slice(-500).map(function(l){return {时间:tsLocal(l.t),操作人:l.u||"",动作:l.a||"",详情:l.d||""};}),\'操作日志.csv\')">⬇️ 导出日志</button></div>'
-   +'<div class="table-wrap" style="padding:0"><table><thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>详情</th></tr></thead><tbody>'
-   +((DB.logs||[]).slice(-200).reverse().map(function(l){return '<tr><td style="white-space:nowrap;font-size:12px">'+esc(tsLocal(l.t))+'</td><td>'+esc(l.u||"—")+'</td><td style="font-weight:600">'+esc(l.a||"")+'</td><td style="font-size:12px;color:var(--muted)">'+esc(l.d||"")+'</td></tr>';}).join("")||'<tr><td colspan="4" style="text-align:center;color:var(--muted)">暂无日志</td></tr>')
-   +'</tbody></table></div></div>';
+  var _lgIn='padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;outline:none';
+  var _lgUsers=(function(){var s={};(DB.logs||[]).forEach(function(l){if(l.u)s[l.u]=1;});(DB.users||[]).forEach(function(u){if(u.username)s[u.username]=1;});return Object.keys(s).sort();})();
+  var _lgActs=(function(){var s={};(DB.logs||[]).forEach(function(l){if(l.a)s[l.a]=(s[l.a]||0)+1;});return Object.keys(s).sort(function(x,y){return s[y]-s[x];});})();
+  html+='<div class="card" style="margin:18px 26px"><h4 style="margin-bottom:8px">📝 操作日志</h4>'
+   +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">当前共 <b>'+((DB.logs||[]).length)+'</b> 条记录（最多保留 2000 条）。设置条件点「🔍 查询」查看，结果可导出 CSV，不再默认铺开整屏。</div>'
+   +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'
+   +'<input id="lg_from" type="date" title="起始日期" value="'+esc(lgF.from||"")+'" style="'+_lgIn+'">'
+   +'<span style="color:var(--muted);font-size:13px">至</span>'
+   +'<input id="lg_to" type="date" title="结束日期" value="'+esc(lgF.to||"")+'" style="'+_lgIn+'">'
+   +'<select id="lg_u" style="'+_lgIn+'"><option value="all">全部操作人</option>'+_lgUsers.map(function(u){return '<option value="'+esc(u)+'"'+(lgF.u===u?' selected':'')+'>'+esc(u)+'</option>';}).join("")+'</select>'
+   +'<select id="lg_a" style="'+_lgIn+'"><option value="all">全部动作</option>'+_lgActs.map(function(a){return '<option value="'+esc(a)+'"'+(lgF.a===a?' selected':'')+'>'+esc(a)+'</option>';}).join("")+'</select>'
+   +'<input id="lg_q" placeholder="关键词（详情/操作人/动作）" value="'+esc(lgF.q||"")+'" onkeydown="if(event.key===\'Enter\')logQuery()" style="'+_lgIn+';min-width:200px">'
+   +'<button class="btn btn-primary btn-sm" onclick="logQuery()">🔍 查询</button>'
+   +'<button class="btn btn-ghost btn-sm" onclick="logReset()">↺ 重置</button>'
+   +'<button class="btn btn-ghost btn-sm" onclick="logExport()">⬇️ 导出结果</button>'
+   +'</div>'
+   +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px">'
+   +'<span style="font-size:12px;color:var(--muted)">快捷：</span>'
+   +'<button class="btn btn-ghost btn-sm" onclick="logQuick(1)">今天</button>'
+   +'<button class="btn btn-ghost btn-sm" onclick="logQuick(7)">近 7 天</button>'
+   +'<button class="btn btn-ghost btn-sm" onclick="logQuick(30)">近 30 天</button>'
+   +'</div>'
+   +'<div id="logWrap">'+logTableHtml()+'</div></div>';
   html+=cloudCardHtml();
   return html;
+}
+/* ---- 操作日志：查询 / 分页 / 导出 ---- */
+function logReadInputs(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:"";};
+  lgF.from=g("lg_from");lgF.to=g("lg_to");lgF.u=g("lg_u")||"all";lgF.a=g("lg_a")||"all";lgF.q=(g("lg_q")||"").trim();
+}
+function logFiltered(){
+  var arr=(DB.logs||[]).slice();
+  if(lgF.from){var a=+new Date(lgF.from+"T00:00:00");if(!isNaN(a))arr=arr.filter(function(l){return +new Date(l.t)>=a;});}
+  if(lgF.to){var b=+new Date(lgF.to+"T23:59:59");if(!isNaN(b))arr=arr.filter(function(l){return +new Date(l.t)<=b;});}
+  if(lgF.u&&lgF.u!=="all")arr=arr.filter(function(l){return (l.u||"")===lgF.u;});
+  if(lgF.a&&lgF.a!=="all")arr=arr.filter(function(l){return (l.a||"")===lgF.a;});
+  if(lgF.q){var q=lgF.q.toLowerCase();arr=arr.filter(function(l){return ((l.d||"")+" "+(l.u||"")+" "+(l.a||"")).toLowerCase().indexOf(q)>=0;});}
+  return arr.reverse();
+}
+function logTableHtml(){
+  if(!lgF.run)return '<div style="padding:14px 2px;font-size:13px;color:var(--muted)">🕵️ 为避免刷屏，日志已改成「查询模式」：设置条件后点「🔍 查询」；条件留空直接查询即显示全部（分页显示）。</div>';
+  var rows=logFiltered();
+  if(!rows.length)return '<div class="table-wrap" style="padding:0"><table><tbody><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:22px">没有符合条件的日志</td></tr></tbody></table></div>';
+  var size=50,p=Math.max(1,lgF.d||1),pages=Math.max(1,Math.ceil(rows.length/size));if(p>pages)p=pages;lgF.d=p;
+  var slice=rows.slice((p-1)*size,p*size);
+  var h='<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">共 <b>'+rows.length+'</b> 条，第 '+p+' / '+pages+' 页</div>'
+   +'<div class="table-wrap" style="padding:0"><table><thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>详情</th></tr></thead><tbody>'
+   +slice.map(function(l){return '<tr><td style="white-space:nowrap;font-size:12px">'+esc(tsLocal(l.t))+'</td><td>'+esc(l.u||"—")+'</td><td style="font-weight:600">'+esc(l.a||"")+'</td><td style="font-size:12px;color:var(--muted)">'+esc(l.d||"")+'</td></tr>';}).join("")
+   +'</tbody></table></div>';
+  if(pages>1)h+='<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-top:10px">'
+   +'<button class="btn btn-ghost btn-sm" '+(p<=1?'disabled':'')+' onclick="logPage('+(p-1)+')">⬅️ 上一页</button>'
+   +'<span style="font-size:12.5px;color:var(--muted)">第 '+p+' / '+pages+' 页</span>'
+   +'<button class="btn btn-ghost btn-sm" '+(p>=pages?'disabled':'')+' onclick="logPage('+(p+1)+')">下一页 ➡️</button></div>';
+  return h;
+}
+function renderLogTbl(){var w=document.getElementById("logWrap");if(w)w.innerHTML=logTableHtml();}
+function logQuery(){logReadInputs();lgF.run=true;lgF.d=1;renderLogTbl();}
+function logPage(n){lgF.d=n;renderLogTbl();}
+function logReset(){lgF={from:"",to:"",u:"all",a:"all",q:"",d:1,run:false};render();}
+function logQuick(days){
+  var now=new Date();lgF.from=todayStr(new Date(now.getTime()-(Math.max(1,days)-1)*86400000));lgF.to=todayStr(now);
+  lgF.u="all";lgF.a="all";lgF.q="";lgF.d=1;lgF.run=true;render();
+}
+function logExport(){
+  var keepRun=lgF.run;logReadInputs();var rows=logFiltered();lgF.run=keepRun;
+  if(!rows.length){toast("没有符合条件的日志","warn");return;}
+  exportCsv(rows.map(function(l){return {时间:tsLocal(l.t),操作人:l.u||"",动作:l.a||"",详情:l.d||""};}),"操作日志-"+todayStr()+".csv");
 }
 function backupAll(){
   try{
